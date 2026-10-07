@@ -8,6 +8,8 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.DisplayName;
@@ -52,6 +54,44 @@ class HijackSessionAuthenticationProviderTest {
   }
 
   @Test
+  void generatedIdsUseIndependentRandomTokens() {
+    Set<String> ids = new HashSet<>();
+    for (int i = 0; i < 200; i++) {
+      String sessionId = HijackSessionAuthenticationProvider.AUTHENTICATION_SUPPLIER.get().getId();
+      assertThat(sessionId.matches("[0-9]{1,19}-[0-9]{1,19}-[0-9a-f]{32}"), is(true));
+      String[] parts = sessionId.split("-");
+      Long.parseLong(parts[0]);
+      Long.parseLong(parts[1]);
+      ids.add(sessionId);
+    }
+    assertThat(ids.size(), is(200));
+  }
+
+  @Test
+  void exactRandomSuffixIsRequiredForAuthentication() {
+    String issuedId = HijackSessionAuthenticationProvider.AUTHENTICATION_SUPPLIER.get().getId();
+    provider.addSession(issuedId);
+
+    Authentication actual = provider.authenticate(Authentication.builder().id(issuedId).build());
+    assertThat(actual.isAuthenticated(), is(true));
+
+    char last = issuedId.charAt(issuedId.length() - 1);
+    String guessedId = issuedId.substring(0, issuedId.length() - 1) + (last == '0' ? '1' : '0');
+    Authentication guessed = provider.authenticate(Authentication.builder().id(guessedId).build());
+    assertThat(guessed.isAuthenticated(), is(false));
+  }
+
+  @Test
+  void failedLoginsDoNotAuthenticateClientWhileAuthorizedSessionsRemainAvailable() {
+    for (int i = 0; i < 200; i++) {
+      Authentication auth =
+          provider.authenticate(Authentication.builder().name("guest").credentials("wrong").build());
+      assertThat(auth.isAuthenticated(), is(false));
+    }
+    assertThat(provider.getSessionsSize() > 0, is(true));
+  }
+
+  @Test
   void testAuthenticationToString() {
     AuthenticationBuilder authBuilder =
         Authentication.builder()
@@ -90,7 +130,6 @@ class HijackSessionAuthenticationProviderTest {
   @Test
   void testMaxSessions() {
     for (int i = 0; i <= HijackSessionAuthenticationProvider.MAX_SESSIONS + 1; i++) {
-      provider.authorizedUserAutoLogin();
       provider.addSession(null);
     }
 
