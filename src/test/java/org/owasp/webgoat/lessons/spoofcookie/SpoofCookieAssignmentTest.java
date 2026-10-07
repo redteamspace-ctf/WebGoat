@@ -6,6 +6,9 @@ package org.owasp.webgoat.lessons.spoofcookie;
 
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -37,8 +40,8 @@ class SpoofCookieAssignmentTest extends LessonTest {
   private static final String ERASE_COOKIE_CONTEXT_PATH = "/SpoofCookie/cleanup";
 
   @Test
-  @DisplayName("Lesson completed")
-  void success() throws Exception {
+  @DisplayName("A forged username cookie cannot complete the lesson")
+  void forgedCookieIsRejected() throws Exception {
     Cookie cookie = new Cookie(COOKIE_NAME, "NjI2MTcwNGI3YTQxNGE1OTU2NzQ2ZDZmNzQ=");
 
     ResultActions result =
@@ -49,7 +52,7 @@ class SpoofCookieAssignmentTest extends LessonTest {
                 .param("password", ""));
 
     result.andExpect(status().isOk());
-    result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(true)));
+    result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
   }
 
   @Test
@@ -68,6 +71,18 @@ class SpoofCookieAssignmentTest extends LessonTest {
     result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
     result.andExpect(content().contentType(MediaType.APPLICATION_JSON_VALUE));
     result.andExpect(cookie().value(COOKIE_NAME, not(emptyString())));
+
+    Cookie issuedCookie = result.andReturn().getResponse().getCookie(COOKIE_NAME);
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                .cookie(issuedCookie)
+                .param("username", "")
+                .param("password", ""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)))
+        .andExpect(
+            jsonPath("$.output", CoreMatchers.containsString("Cookie details for user webgoat")));
   }
 
   @ParameterizedTest
@@ -116,6 +131,7 @@ class SpoofCookieAssignmentTest extends LessonTest {
                 .param("password", ""));
 
     result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+    result.andExpect(cookie().doesNotExist(COOKIE_NAME));
   }
 
   @Test
@@ -140,6 +156,7 @@ class SpoofCookieAssignmentTest extends LessonTest {
                 .param("password", "apasswordfortom"));
 
     result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+    result.andExpect(cookie().doesNotExist(COOKIE_NAME));
   }
 
   @Test
@@ -162,6 +179,58 @@ class SpoofCookieAssignmentTest extends LessonTest {
         .andExpect(status().isOk())
         .andExpect(cookie().maxAge(COOKIE_NAME, 0))
         .andExpect(cookie().value(COOKIE_NAME, ""));
+  }
+
+  @Test
+  @DisplayName("Cleanup revokes an issued cookie and permits another credentials login")
+  void cleanupIssuedCookieAllowsNewLogin() throws Exception {
+    Cookie issuedCookie =
+        mockMvc
+            .perform(
+                MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                    .param("username", "webgoat")
+                    .param("password", "webgoat"))
+            .andExpect(status().isOk())
+            .andExpect(cookie().value(COOKIE_NAME, not(emptyString())))
+            .andReturn()
+            .getResponse()
+            .getCookie(COOKIE_NAME);
+    assertTrue(issuedCookie.isHttpOnly());
+
+    Cookie clearedCookie =
+        mockMvc
+            .perform(MockMvcRequestBuilders.get(ERASE_COOKIE_CONTEXT_PATH).cookie(issuedCookie))
+            .andExpect(status().isOk())
+            .andExpect(cookie().maxAge(COOKIE_NAME, 0))
+            .andExpect(cookie().value(COOKIE_NAME, ""))
+            .andReturn()
+            .getResponse()
+            .getCookie(COOKIE_NAME);
+    assertEquals("/WebGoat", clearedCookie.getPath());
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                .cookie(issuedCookie)
+                .param("username", "")
+                .param("password", ""))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("spoofcookie.wrong-cookie"))));
+
+    Cookie nextCookie =
+        mockMvc
+            .perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                    .param("username", "admin")
+                    .param("password", "admin"))
+            .andExpect(status().isOk())
+            .andExpect(
+                jsonPath("$.output", CoreMatchers.containsString("Cookie details for user admin")))
+            .andReturn()
+            .getResponse()
+            .getCookie(COOKIE_NAME);
+    assertNotEquals(issuedCookie.getValue(), nextCookie.getValue());
   }
 
   private static Stream<Arguments> providedCookieValues() {
