@@ -54,9 +54,11 @@ public class Servers {
 
     // Only a known column may be used for ordering: the value is never concatenated into the
     // statement, so an ORDER BY clause cannot be swapped for a sub-query that leaks data.
-    String sortColumn = column == null ? "id" : column.trim().toLowerCase(java.util.Locale.ROOT);
+    String sortColumn = column == null ? "" : column.trim().toLowerCase(java.util.Locale.ROOT);
     if (!ALLOWED_COLUMNS.contains(sortColumn)) {
-      sortColumn = "id";
+      // Anything that is not a plain column name is refused outright
+      throw new org.springframework.web.server.ResponseStatusException(
+          org.springframework.http.HttpStatus.BAD_REQUEST, "Unknown sort column");
     }
 
     try (var connection = dataSource.getConnection()) {

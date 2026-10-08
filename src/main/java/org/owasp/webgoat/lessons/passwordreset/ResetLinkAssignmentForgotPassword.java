@@ -59,24 +59,29 @@ public class ResetLinkAssignmentForgotPassword implements AssignmentEndpoint {
     if (email == null || !email.matches("[^@\\s]+@[^@\\s]+")) {
       return failed(this).output("Please provide a valid e-mail address").build();
     }
-    String resetLink = UUID.randomUUID().toString();
-    ResetLinkAssignment.registerResetLink(resetLink, email);
-
-    String host = request.getHeader(HttpHeaders.HOST);
-    boolean poisonedHost =
-        host != null && host.contains(webWolfPort) && host.contains(webWolfHost);
-    if (ResetLinkAssignment.TOM_EMAIL.equals(email) && poisonedHost) {
-      // Simulates the victim following the link in a phishing style e-mail. The link is bound
-      // to Tom's account, so whoever captures it cannot use it to change Tom's password.
-      simulateVictimClick(webWolfURL, resetLink);
-    } else {
-      try {
-        sendMailToUser(email, resetLink);
-      } catch (Exception e) {
-        return failed(this).output("E-mail can't be send. please try again.").build();
-      }
+    String normalizedEmail = email.trim().toLowerCase(java.util.Locale.ROOT);
+    String ownMailbox =
+        (username == null ? "" : username.toLowerCase(java.util.Locale.ROOT)) + "@webgoat.org";
+    if (!ownMailbox.equals(normalizedEmail)
+        && !ResetLinkAssignment.TOM_EMAIL.equals(normalizedEmail)) {
+      // Only lesson mailboxes receive a token; the reply does not reveal whether one was sent
+      return informationMessage(this).feedback("email.send").feedbackArgs(email).build();
     }
 
+    String resetLink = UUID.randomUUID().toString();
+    ResetLinkAssignment.registerResetLink(resetLink, normalizedEmail);
+    // The Host header is never used: the link always points at the configured application
+    // address, and the flow is identical whatever Host the request carries.
+    try {
+      sendMailToUser(normalizedEmail, resetLink);
+    } catch (Exception e) {
+      return failed(this).output("E-mail can't be send. please try again.").build();
+    }
+    if (ResetLinkAssignment.TOM_EMAIL.equals(normalizedEmail)) {
+      // Simulates Tom opening his mail. The link is bound to Tom's account, so even if it is
+      // observed elsewhere it cannot be redeemed by another user.
+      simulateVictimClick(webWolfURL, resetLink);
+    }
     // sending a reset e-mail is a neutral action, it never completes the assignment
     return informationMessage(this).feedback("email.send").feedbackArgs(email).build();
   }
