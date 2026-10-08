@@ -31,11 +31,13 @@ public class MissingFunctionACUsers {
   private final MissingAccessControlUserRepository userRepository;
 
   @GetMapping(path = {"access-control/users"})
-  public ModelAndView listUsers() {
+  public ModelAndView listUsers(@CurrentUsername String username) {
 
     ModelAndView model = new ModelAndView();
     model.setViewName("list_users");
-    List<User> allUsers = userRepository.findAllUsers();
+    var currentUser = userRepository.findByUsername(username);
+    List<User> allUsers =
+        currentUser != null && currentUser.isAdmin() ? userRepository.findAllUsers() : List.of();
     model.addObject("numUsers", allUsers.size());
     // add display user objects in place of direct users
     List<DisplayUser> displayUsers = new ArrayList<>();
@@ -51,11 +53,15 @@ public class MissingFunctionACUsers {
       path = {"access-control/users"},
       consumes = "application/json")
   @ResponseBody
-  public ResponseEntity<List<DisplayUser>> usersService() {
-    return ResponseEntity.ok(
-        userRepository.findAllUsers().stream()
-            .map(user -> new DisplayUser(user, PASSWORD_SALT_SIMPLE))
-            .collect(Collectors.toList()));
+  public ResponseEntity<List<DisplayUser>> usersService(@CurrentUsername String username) {
+    var currentUser = userRepository.findByUsername(username);
+    if (currentUser != null && currentUser.isAdmin()) {
+      return ResponseEntity.ok(
+          userRepository.findAllUsers().stream()
+              .map(user -> new DisplayUser(user, PASSWORD_SALT_SIMPLE))
+              .collect(Collectors.toList()));
+    }
+    return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
   }
 
   @GetMapping(
@@ -78,7 +84,11 @@ public class MissingFunctionACUsers {
       consumes = "application/json",
       produces = "application/json")
   @ResponseBody
-  public User addUser(@RequestBody User newUser) {
+  public User addUser(@RequestBody User newUser, @CurrentUsername String username) {
+    var currentUser = userRepository.findByUsername(username);
+    if (currentUser == null || !currentUser.isAdmin()) {
+      return null;
+    }
     try {
       userRepository.save(newUser);
       return newUser;

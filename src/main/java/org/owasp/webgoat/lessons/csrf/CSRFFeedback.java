@@ -5,15 +5,14 @@
 package org.owasp.webgoat.lessons.csrf;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
+import static org.owasp.webgoat.container.assignments.AttackResultBuilder.informationMessage;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -43,6 +42,15 @@ public class CSRFFeedback implements AssignmentEndpoint {
       produces = {"application/json"})
   @ResponseBody
   public AttackResult completed(HttpServletRequest request, @RequestBody String feedback) {
+    // Only JSON posted by a page of this application is accepted. A text/plain body or a
+    // cross-site origin is exactly what a CSRF attack looks like and is refused.
+    String contentType = request.getContentType();
+    if (contentType == null || !contentType.toLowerCase().startsWith(MediaType.APPLICATION_JSON_VALUE)) {
+      return failed(this).output("Only application/json requests are accepted").build();
+    }
+    if (!SameOriginCheck.isSameOrigin(request)) {
+      return failed(this).output("Cross-site request refused").build();
+    }
     try {
       objectMapper.enable(DeserializationFeature.FAIL_ON_IGNORED_PROPERTIES);
       objectMapper.enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
@@ -54,16 +62,7 @@ public class CSRFFeedback implements AssignmentEndpoint {
     } catch (IOException e) {
       return failed(this).feedback(ExceptionUtils.getStackTrace(e)).build();
     }
-    boolean correctCSRF =
-        requestContainsWebGoatCookie(request.getCookies())
-            && request.getContentType().contains(MediaType.TEXT_PLAIN_VALUE);
-    correctCSRF &= hostOrRefererDifferentHost(request);
-    if (correctCSRF) {
-      String flag = UUID.randomUUID().toString();
-      userSessionData.setValue("csrf-feedback", flag);
-      return success(this).feedback("csrf-feedback-success").feedbackArgs(flag).build();
-    }
-    return failed(this).build();
+    return informationMessage(this).output("Thank you for your feedback").build();
   }
 
   @PostMapping(path = "/csrf/feedback", produces = "application/json")
@@ -74,27 +73,6 @@ public class CSRFFeedback implements AssignmentEndpoint {
     } else {
       return failed(this).build();
     }
-  }
-
-  private boolean hostOrRefererDifferentHost(HttpServletRequest request) {
-    String referer = request.getHeader("Referer");
-    String host = request.getHeader("Host");
-    if (referer != null) {
-      return !referer.contains(host);
-    } else {
-      return true;
-    }
-  }
-
-  private boolean requestContainsWebGoatCookie(Cookie[] cookies) {
-    if (cookies != null) {
-      for (Cookie c : cookies) {
-        if (c.getName().equals("JSESSIONID")) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   /*

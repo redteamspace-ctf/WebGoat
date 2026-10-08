@@ -11,7 +11,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwt;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.impl.TextCodec;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Calendar;
 import java.util.Date;
@@ -31,11 +31,19 @@ import org.springframework.web.bind.annotation.RestController;
 @AssignmentHints({"jwt-secret-hint1", "jwt-secret-hint2", "jwt-secret-hint3"})
 public class JWTSecretKeyEndpoint implements AssignmentEndpoint {
 
+  /** Dictionary words used only to sign the sample token shown in the lesson. */
   public static final String[] SECRETS = {
     "victory", "business", "available", "shipping", "washington"
   };
-  public static final String JWT_SECRET =
-      TextCodec.BASE64.encode(SECRETS[new Random().nextInt(SECRETS.length)]);
+  /**
+   * The secret the application trusts is a strong random key generated at start-up; it is
+   * independent from the sample token key, so recovering that key does not allow forging a
+   * token accepted by the login.
+   */
+  public static final String JWT_SECRET = SigningSecrets.newBase64Secret();
+
+  private static final byte[] SAMPLE_TOKEN_KEY =
+      SECRETS[new Random().nextInt(SECRETS.length)].getBytes(StandardCharsets.UTF_8);
   private static final String WEBGOAT_USER = "WebGoat";
   private static final List<String> expectedClaims =
       List.of("iss", "iat", "exp", "aud", "sub", "username", "Email", "Role");
@@ -52,7 +60,8 @@ public class JWTSecretKeyEndpoint implements AssignmentEndpoint {
         .claim("username", "Tom")
         .claim("Email", "tom@webgoat.org")
         .claim("Role", new String[] {"Manager", "Project Administrator"})
-        .signWith(SignatureAlgorithm.HS256, JWT_SECRET)
+        // sample token for the exercise, signed with a demonstration key that is NOT trusted
+        .signWith(SignatureAlgorithm.HS256, SAMPLE_TOKEN_KEY)
         .compact();
   }
 

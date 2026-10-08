@@ -9,10 +9,12 @@ import static org.owasp.webgoat.container.assignments.AttackResultBuilder.succes
 import static org.springframework.util.StringUtils.hasText;
 
 import com.google.common.collect.Maps;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.owasp.webgoat.container.CurrentUsername;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -30,8 +32,10 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.ModelAndView;
 
 /**
- * @author nbaars
- * @since 8/20/17.
+ * Password reset links are random, short lived, single use and bound to the account they were
+ * requested for: a link can only change the password of the account that owns it, so a link
+ * obtained by somebody else (for example through a poisoned e-mail) cannot be used to take over
+ * that account.
  */
 @RestController
 @AssignmentHints({
@@ -48,14 +52,19 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
   static final String PASSWORD_TOM_9 =
       "somethingVeryRandomWhichNoOneWillEverTypeInAsPasswordForTom";
   static final String TOM_EMAIL = "tom@webgoat-cloud.org";
-  static Map<String, String> userToTomResetLink = new HashMap<>();
+  static final Duration LINK_LIFETIME = Duration.ofMinutes(15);
+
+  /** A reset link together with the account it was issued for. */
+  record ResetRequest(String accountEmail, String accountName, Instant expiresAt) {}
+
   static Map<String, String> usersToTomPassword = Maps.newHashMap();
   static List<String> resetLinks = new ArrayList<>();
+  static final Map<String, ResetRequest> resetRequests = new ConcurrentHashMap<>();
 
   static final String TEMPLATE =
       """
       Hi, you requested a password reset link, please use this <a target='_blank'
-       href='http://%s/WebGoat/PasswordReset/reset/reset-password/%s'>link</a> to reset your
+       href='%s/PasswordReset/reset/reset-password/%s'>link</a> to reset your
        password.
 
       If you did not request this password change you can ignore this message.
@@ -65,6 +74,29 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
       Kind regards,
       Team WebGoat
       """;
+
+  static void registerResetLink(String link, String email) {
+    int at = email.indexOf('@');
+    String accountName = at < 0 ? email : email.substring(0, at);
+    resetRequests.put(link, new ResetRequest(email, accountName, Instant.now().plus(LINK_LIFETIME)));
+    resetLinks.add(link);
+  }
+
+  private static ResetRequest validResetRequest(String link) {
+    if (!hasText(link)) {
+      return null;
+    }
+    ResetRequest request = resetRequests.get(link);
+    if (request == null) {
+      return null;
+    }
+    if (Instant.now().isAfter(request.expiresAt())) {
+      resetRequests.remove(link);
+      resetLinks.remove(link);
+      return null;
+    }
+    return request;
+  }
 
   @PostMapping("/PasswordReset/reset/login")
   @ResponseBody
@@ -84,7 +116,7 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
   @GetMapping("/PasswordReset/reset/reset-password/{link}")
   public ModelAndView resetPassword(@PathVariable(value = "link") String link, Model model) {
     ModelAndView modelAndView = new ModelAndView();
-    if (ResetLinkAssignment.resetLinks.contains(link)) {
+    if (validResetRequest(link) != null) {
       PasswordChangeForm form = new PasswordChangeForm();
       form.setResetLink(link);
       model.addAttribute("form", form);
@@ -110,19 +142,20 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
       modelAndView.setViewName(VIEW_FORMATTER.formatted("password_reset"));
       return modelAndView;
     }
-    if (!resetLinks.contains(form.getResetLink())) {
+    ResetRequest request = validResetRequest(form.getResetLink());
+    // The link must exist, be unexpired and belong to the account of the current user: nobody
+    // can change another account's password with a link that was not issued to them.
+    if (request == null || username == null || !username.equalsIgnoreCase(request.accountName())) {
       modelAndView.setViewName(VIEW_FORMATTER.formatted("password_link_not_found"));
       return modelAndView;
     }
-    if (checkIfLinkIsFromTom(form.getResetLink(), username)) {
+    // single use
+    resetRequests.remove(form.getResetLink());
+    resetLinks.remove(form.getResetLink());
+    if (TOM_EMAIL.equals(request.accountEmail())) {
       usersToTomPassword.put(username, form.getPassword());
     }
     modelAndView.setViewName(VIEW_FORMATTER.formatted("success"));
     return modelAndView;
-  }
-
-  private boolean checkIfLinkIsFromTom(String resetLinkFromForm, String username) {
-    String resetLink = userToTomResetLink.getOrDefault(username, "unknown");
-    return resetLink.equals(resetLinkFromForm);
   }
 }
