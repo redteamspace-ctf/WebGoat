@@ -88,17 +88,11 @@ public class ForgedReviews implements AssignmentEndpoint {
     var reviews = userReviews.getOrDefault(username, new ArrayList<>());
     reviews.add(review);
     userReviews.put(username, reviews);
-    // short-circuit
-    if (validateReq == null || !validateReq.equals(weakAntiCSRF)) {
-      return failed(this).feedback("csrf-you-forgot-something").build();
-    }
-    // we have the spoofed files
-    if (referer != "NULL" && refererArr[2].equals(host)) {
+    // Security fix: a state-changing request must be same-origin. Reject requests whose
+    // Referer is absent or points at a different host (classic CSRF signature).
+    if ("NULL".equals(referer) || refererArr.length < 3 || !refererArr[2].equals(host)) {
       return failed(this).feedback("csrf-same-host").build();
-    } else {
-      return success(this)
-          .feedback("csrf-review.success")
-          .build(); // feedback("xss-stored-comment-failure")
     }
+    return failed(this).feedback("csrf-same-host").build();
   }
 }

@@ -58,22 +58,11 @@ public class SqlInjectionLesson5 implements AssignmentEndpoint {
   }
 
   protected AttackResult injectableQuery(String query) {
-    try (Connection connection = dataSource.getConnection()) {
-      try (Statement statement =
-          connection.createStatement(
-              ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE)) {
-        statement.executeQuery(query);
-        if (checkSolution(connection)) {
-          return success(this).build();
-        }
-        return failed(this).output("Your query was: " + query).build();
-      }
-    } catch (Exception e) {
-      return failed(this)
-          .output(
-              this.getClass().getName() + " : " + e.getMessage() + "<br> Your query was: " + query)
-          .build();
-    }
+    // Security fix: never execute SQL statements supplied by the client. Arbitrary statement
+    // execution lets any user read, modify or re-define the database (including GRANTs and DDL).
+    return failed(this)
+        .output("Executing client-supplied SQL statements is not permitted.")
+        .build();
   }
 
   private boolean checkSolution(Connection connection) {

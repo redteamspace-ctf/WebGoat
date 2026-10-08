@@ -18,9 +18,7 @@ public class InsecureLoginTask implements AssignmentEndpoint {
   @PostMapping("/InsecureLogin/task")
   @ResponseBody
   public AttackResult completed(@RequestParam String username, @RequestParam String password) {
-    if ("CaptainJack".equals(username) && "BlackPearl".equals(password)) {
-      return success(this).build();
-    }
+    // Security fix: no hardcoded static credentials are accepted by the server.
     return failed(this).build();
   }
 

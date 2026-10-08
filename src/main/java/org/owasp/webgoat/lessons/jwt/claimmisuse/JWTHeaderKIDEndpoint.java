@@ -39,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 })
 @RequestMapping("/JWT/")
 public class JWTHeaderKIDEndpoint implements AssignmentEndpoint {
+  private static final int MIN_HMAC_KEY_BYTES = 32;
   private final LessonDataSource dataSource;
 
   private JWTHeaderKIDEndpoint(LessonDataSource dataSource) {
@@ -68,14 +69,21 @@ public class JWTHeaderKIDEndpoint implements AssignmentEndpoint {
                       @Override
                       public byte[] resolveSigningKeyBytes(JwsHeader header, Claims claims) {
                         final String kid = (String) header.get("kid");
-                        try (var connection = dataSource.getConnection()) {
-                          ResultSet rs =
-                              connection
-                                  .createStatement()
-                                  .executeQuery(
-                                      "SELECT key FROM jwt_keys WHERE id = '" + kid + "'");
+                        try (var connection = dataSource.getConnection();
+                            var statement =
+                                connection.prepareStatement(
+                                    "SELECT key FROM jwt_keys WHERE id = ?")) {
+                          statement.setString(1, kid);
+                          ResultSet rs = statement.executeQuery();
                           while (rs.next()) {
-                            return TextCodec.BASE64.decode(rs.getString(1));
+                            byte[] keyBytes = TextCodec.BASE64.decode(rs.getString(1));
+                            // RFC 7518 3.2: HMAC keys must be at least as long as the hash
+                            // output (256 bits for HS256). Refuse weak keys.
+                            if (keyBytes == null || keyBytes.length < MIN_HMAC_KEY_BYTES) {
+                              throw new io.jsonwebtoken.SignatureException(
+                                  "Signing key for kid is too weak");
+                            }
+                            return keyBytes;
                           }
                         } catch (SQLException e) {
                           errorMessage[0] = e.getMessage();

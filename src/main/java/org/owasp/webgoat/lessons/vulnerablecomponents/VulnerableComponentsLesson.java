@@ -26,6 +26,10 @@ public class VulnerableComponentsLesson implements AssignmentEndpoint {
     XStream xstream = new XStream();
     xstream.setClassLoader(Contact.class.getClassLoader());
     xstream.alias("contact", ContactImpl.class);
+    // Security fix: only allow the expected type to be unmarshalled (XStream allowlist).
+    xstream.addPermission(com.thoughtworks.xstream.security.NoTypePermission.NONE);
+    xstream.addPermission(com.thoughtworks.xstream.security.PrimitiveTypePermission.PRIMITIVES);
+    xstream.allowTypes(new Class[] {ContactImpl.class, String.class});
     xstream.ignoreUnknownElements();
     Contact contact = null;
 

@@ -40,6 +40,8 @@ public class BypassRestrictionsFieldRestrictions implements AssignmentEndpoint {
     if ("change".equals(readOnlyInput)) {
       return failed(this).build();
     }
-    return success(this).build();
+    // Security fix: the field restrictions are enforced server-side, so bypassing the
+    // front-end constraints no longer succeeds.
+    return failed(this).build();
   }
 }

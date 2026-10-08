@@ -17,6 +17,14 @@ public class DisplayUser {
   private final boolean admin;
   private String userHash;
 
+  private static final String RUNTIME_SECRET = newRuntimeSecret();
+
+  private static String newRuntimeSecret() {
+    byte[] bytes = new byte[32];
+    new java.security.SecureRandom().nextBytes(bytes);
+    return Base64.getEncoder().encodeToString(bytes);
+  }
+
   public DisplayUser(User user, String passwordSalt) {
     this.username = user.getUsername();
     this.admin = user.isAdmin();
@@ -31,8 +39,9 @@ public class DisplayUser {
   protected String genUserHash(String username, String password, String passwordSalt)
       throws Exception {
     MessageDigest md = MessageDigest.getInstance("SHA-256");
-    // salting is good, but static & too predictable ... short too for a salt
-    String salted = password + passwordSalt + username;
+    // Security fix: the hash is bound to an unpredictable, per-instance secret so a leaked
+    // or recomputed hash based on the old static salt is worthless.
+    String salted = password + passwordSalt + username + RUNTIME_SECRET;
     // md.update(salted.getBytes("UTF-8")); // Change this to "UTF-16" if needed
     byte[] hash = md.digest(salted.getBytes(StandardCharsets.UTF_8));
     return Base64.getEncoder().encodeToString(hash);

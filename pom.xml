@@ -65,7 +65,7 @@
     <asciidoctorj.version>3.0.0</asciidoctorj.version>
     <bootstrap.version>5.3.3</bootstrap.version>
     <cglib.version>3.3.0</cglib.version>
-    <!-- do not update necessary for lesson -->
+    <!-- updated: 1.4.5 is affected by CVE-2013-7285 and later XStream RCEs -->
     <checkstyle.version>3.6.0</checkstyle.version>
     <commons-collections.version>3.2.1</commons-collections.version>
     <commons-compress.version>1.27.1</commons-compress.version>
@@ -105,8 +105,8 @@
     <webwolf.port>9090</webwolf.port>
     <wiremock.version>3.12.0</wiremock.version>
     <xml-resolver.version>1.2</xml-resolver.version>
-    <xstream.version>1.4.5</xstream.version>
-    <!-- do not update necessary for lesson -->
+    <xstream.version>1.4.21</xstream.version>
+    <!-- updated: 1.4.5 is affected by CVE-2013-7285 and later XStream RCEs -->
     <zxcvbn.version>1.9.0</zxcvbn.version>
   </properties>
 

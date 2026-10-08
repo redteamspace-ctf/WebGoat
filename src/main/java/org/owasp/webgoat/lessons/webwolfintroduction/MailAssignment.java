@@ -27,6 +27,19 @@ import org.springframework.web.client.RestTemplate;
 @RestController
 public class MailAssignment implements AssignmentEndpoint {
 
+  // Security fix: the unique code is an unpredictable random token issued when the mail is
+  // actually sent, not a trivial reverse(username) that anyone can derive.
+  static final java.util.Map<String, String> ISSUED_CODES =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  static String issueCode(String username) {
+    byte[] bytes = new byte[16];
+    new java.security.SecureRandom().nextBytes(bytes);
+    String code = java.util.HexFormat.of().formatHex(bytes);
+    ISSUED_CODES.put(username, code);
+    return code;
+  }
+
   private final String webWolfURL;
   private RestTemplate restTemplate;
 
@@ -48,7 +61,7 @@ public class MailAssignment implements AssignmentEndpoint {
               .title("Test messages from WebWolf")
               .contents(
                   "This is a test message from WebWolf, your unique code is: "
-                      + StringUtils.reverse(username))
+                      + issueCode(username))
               .sender("webgoat@owasp.org")
               .build();
       try {
@@ -71,7 +84,8 @@ public class MailAssignment implements AssignmentEndpoint {
   @PostMapping("/WebWolf/mail")
   @ResponseBody
   public AttackResult completed(@RequestParam String uniqueCode, @CurrentUsername String username) {
-    if (uniqueCode.equals(StringUtils.reverse(username))) {
+    String expected = ISSUED_CODES.get(username);
+    if (expected != null && expected.equals(uniqueCode)) {
       return success(this).build();
     } else {
       return failed(this).feedbackArgs("webwolf.code_incorrect").feedbackArgs(uniqueCode).build();

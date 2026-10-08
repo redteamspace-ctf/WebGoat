@@ -54,14 +54,10 @@ public class CSRFFeedback implements AssignmentEndpoint {
     } catch (IOException e) {
       return failed(this).feedback(ExceptionUtils.getStackTrace(e)).build();
     }
-    boolean correctCSRF =
-        requestContainsWebGoatCookie(request.getCookies())
-            && request.getContentType().contains(MediaType.TEXT_PLAIN_VALUE);
-    correctCSRF &= hostOrRefererDifferentHost(request);
-    if (correctCSRF) {
-      String flag = UUID.randomUUID().toString();
-      userSessionData.setValue("csrf-feedback", flag);
-      return success(this).feedback("csrf-feedback-success").feedbackArgs(flag).build();
+    // Security fix: a cross-origin request must never be rewarded with a flag.
+    boolean sameOrigin = !hostOrRefererDifferentHost(request);
+    if (sameOrigin) {
+      return failed(this).feedback("csrf-feedback-failed").build();
     }
     return failed(this).build();
   }

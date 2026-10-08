@@ -26,6 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 public class Servers {
 
+  private static final java.util.Set<String> ALLOWED_SORT_COLUMNS =
+      java.util.Set.of("id", "hostname", "ip", "mac", "status", "description");
+
   private final LessonDataSource dataSource;
 
   @AllArgsConstructor
@@ -48,6 +51,9 @@ public class Servers {
   @ResponseBody
   public List<Server> sort(@RequestParam String column) throws Exception {
     List<Server> servers = new ArrayList<>();
+    if (!ALLOWED_SORT_COLUMNS.contains(column == null ? "" : column.toLowerCase())) {
+      column = "id";
+    }
 
     try (var connection = dataSource.getConnection()) {
       try (var statement =

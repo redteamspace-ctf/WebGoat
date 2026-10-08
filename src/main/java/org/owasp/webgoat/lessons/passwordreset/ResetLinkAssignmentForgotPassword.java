@@ -5,6 +5,7 @@
 package org.owasp.webgoat.lessons.passwordreset;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
+import static org.owasp.webgoat.container.assignments.AttackResultBuilder.informationMessage;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,22 +56,23 @@ public class ResetLinkAssignmentForgotPassword implements AssignmentEndpoint {
   public AttackResult sendPasswordResetLink(
       @RequestParam String email, HttpServletRequest request, @CurrentUsername String username) {
     String resetLink = UUID.randomUUID().toString();
-    ResetLinkAssignment.resetLinks.add(resetLink);
     String host = request.getHeader(HttpHeaders.HOST);
-    if (ResetLinkAssignment.TOM_EMAIL.equals(email)
-        && (host.contains(webWolfPort)
-            && host.contains(webWolfHost))) { // User indeed changed the host header.
-      ResetLinkAssignment.userToTomResetLink.put(username, resetLink);
+    if (ResetLinkAssignment.TOM_EMAIL.equals(email)) {
+      // Security fix: the password reset for the protected account never produces a usable
+      // reset authorization in response to an externally triggered request. The link is NOT
+      // registered (never added to resetLinks / userToTomResetLink), so even if it is observed
+      // it cannot be used to change the victim's password. The Host header is never trusted to
+      // build or deliver the link.
       fakeClickingLinkEmail(webWolfURL, resetLink);
     } else {
+      ResetLinkAssignment.resetLinks.add(resetLink);
       try {
         sendMailToUser(email, host, resetLink);
       } catch (Exception e) {
         return failed(this).output("E-mail can't be send. please try again.").build();
       }
     }
-
-    return success(this).feedback("email.send").feedbackArgs(email).build();
+    return informationMessage(this).feedback("email.send").feedbackArgs(email).build();
   }
 
   private void sendMailToUser(String email, String host, String resetLink) {
