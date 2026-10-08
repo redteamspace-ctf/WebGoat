@@ -39,6 +39,13 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 public class Assignment7 implements AssignmentEndpoint {
 
+  /**
+   * Formerly a hardcoded, predictable admin reset link. Kept only as a reference value: it is no
+   * longer accepted by {@link #resetPassword(String)}, which requires a per-user, random,
+   * single-use token that expires.
+   */
+  @Deprecated public static final String ADMIN_PASSWORD_LINK = "375afe1104f4a487a73823c50a9292a2";
+
   private static final String TEMPLATE =
       "Hi, you requested a password reset link, please use this <a target='_blank'"
           + " href='%s/challenge/7/reset-password/%s'>link</a> to reset your"
