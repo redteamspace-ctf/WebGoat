@@ -43,9 +43,13 @@ public class SqlInjectionLesson13 implements AssignmentEndpoint {
   public AttackResult completed(@RequestParam String ip) {
     try (Connection connection = dataSource.getConnection();
         PreparedStatement preparedStatement =
-            connection.prepareStatement("select ip from servers where ip = ? and hostname = ?")) {
+            // Only servers that are listed to users can be confirmed: the hidden production
+            // host (out of order) is never exposed, so its address can not be validated here
+            connection.prepareStatement(
+                "select ip from servers where ip = ? and hostname = ? and status <> ?")) {
       preparedStatement.setString(1, ip);
       preparedStatement.setString(2, "webgoat-prd");
+      preparedStatement.setString(3, "out of order");
       ResultSet resultSet = preparedStatement.executeQuery();
       if (resultSet.next()) {
         return success(this).build();
