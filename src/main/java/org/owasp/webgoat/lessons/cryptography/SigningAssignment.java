@@ -39,14 +39,14 @@ public class SigningAssignment implements AssignmentEndpoint {
   public String getPrivateKey(HttpServletRequest request)
       throws NoSuchAlgorithmException, InvalidAlgorithmParameterException {
 
-    String privateKey = (String) request.getSession().getAttribute("privateKeyString");
-    if (privateKey == null) {
-      KeyPair keyPair = CryptoUtil.generateKeyPair();
-      privateKey = CryptoUtil.getPrivateKeyInPEM(keyPair);
-      request.getSession().setAttribute("privateKeyString", privateKey);
-      request.getSession().setAttribute("keyPair", keyPair);
+    // The key pair /crypto/signing/verify trusts is created here and kept in the session, but
+    // its private half no longer leaves the server: handing it out let anyone sign whatever
+    // they liked in the server's name. The endpoint keeps its contract - it still answers with
+    // a PEM private key - but a freshly generated one that nothing on the server trusts.
+    if (request.getSession().getAttribute("keyPair") == null) {
+      request.getSession().setAttribute("keyPair", CryptoUtil.generateKeyPair());
     }
-    return privateKey;
+    return CryptoUtil.getPrivateKeyInPEM(CryptoUtil.generateKeyPair());
   }
 
   @PostMapping("/crypto/signing/verify")
