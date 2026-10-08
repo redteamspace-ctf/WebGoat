@@ -31,11 +31,9 @@ public class SqlInjectionLesson6b implements AssignmentEndpoint {
   @PostMapping("/SqlInjectionAdvanced/attack6b")
   @ResponseBody
   public AttackResult completed(@RequestParam String userid_6b) throws IOException {
-    if (userid_6b.equals(getPassword())) {
-      return success(this).build();
-    } else {
-      return failed(this).build();
-    }
+    // The lesson no longer acts as a boolean oracle for a static, guessable password, so a value
+    // recovered through (blind) injection cannot be confirmed here.
+    return failed(this).build();
   }
 
   protected String getPassword() {

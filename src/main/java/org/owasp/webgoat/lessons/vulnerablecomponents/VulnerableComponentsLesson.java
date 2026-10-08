@@ -24,6 +24,10 @@ public class VulnerableComponentsLesson implements AssignmentEndpoint {
   @PostMapping("/VulnerableComponents/attack1")
   public @ResponseBody AttackResult completed(@RequestParam String payload) {
     XStream xstream = new XStream();
+    // Only the expected contact type may be reconstructed: allowing arbitrary classes to be
+    // instantiated from the request is what turns deserialization into remote code execution.
+    xstream.addPermission(com.thoughtworks.xstream.security.NoTypePermission.NONE);
+    xstream.allowTypes(new Class<?>[] {ContactImpl.class});
     xstream.setClassLoader(Contact.class.getClassLoader());
     xstream.alias("contact", ContactImpl.class);
     xstream.ignoreUnknownElements();
