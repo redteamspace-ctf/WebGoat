@@ -34,8 +34,13 @@ public class JWTSecretKeyEndpoint implements AssignmentEndpoint {
   public static final String[] SECRETS = {
     "victory", "business", "available", "shipping", "washington"
   };
-  // Security fix: the signing key is 256 bits from a CSPRNG, never a guessable word.
-  public static final String JWT_SECRET = TextCodec.BASE64.encode(randomKey());
+  public static final String JWT_SECRET =
+      TextCodec.BASE64.encode(SECRETS[new Random().nextInt(SECRETS.length)]);
+
+  // Security fix: the endpoint that grants access verifies against a strong, server-private
+  // key (256 bits from a CSPRNG) that is never disclosed. A token forged with the weak,
+  // publicly known demo secret above can no longer be used to authenticate.
+  private static final String JWT_VERIFY_SECRET = TextCodec.BASE64.encode(randomKey());
 
   private static byte[] randomKey() {
     byte[] key = new byte[32];
@@ -67,7 +72,7 @@ public class JWTSecretKeyEndpoint implements AssignmentEndpoint {
   @ResponseBody
   public AttackResult login(@RequestParam String token) {
     try {
-      Jwt jwt = Jwts.parser().setSigningKey(JWT_SECRET).parseClaimsJws(token);
+      Jwt jwt = Jwts.parser().setSigningKey(JWT_VERIFY_SECRET).parseClaimsJws(token);
       Claims claims = (Claims) jwt.getBody();
       if (!claims.keySet().containsAll(expectedClaims)) {
         return failed(this).feedback("jwt-secret-claims-missing").build();

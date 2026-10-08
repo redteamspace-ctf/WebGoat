@@ -56,15 +56,25 @@ public class ResetLinkAssignmentForgotPassword implements AssignmentEndpoint {
   public AttackResult sendPasswordResetLink(
       @RequestParam String email, HttpServletRequest request, @CurrentUsername String username) {
     String resetLink = UUID.randomUUID().toString();
-    ResetLinkAssignment.resetLinks.add(resetLink);
-    // Security fix: the reset link is always built from the trusted, server-configured host,
-    // never from the attacker-controlled Host header, and WebGoat never auto-"clicks" a link
-    // to an externally supplied host.
-    String trustedHost = webWolfHost + ":" + webWolfPort;
-    try {
-      sendMailToUser(email, trustedHost, resetLink);
-    } catch (Exception e) {
-      return failed(this).output("E-mail can't be send. please try again.").build();
+    String host = request.getHeader(HttpHeaders.HOST);
+    boolean hostPoisoned =
+        ResetLinkAssignment.TOM_EMAIL.equals(email)
+            && host != null
+            && host.contains(webWolfPort)
+            && host.contains(webWolfHost);
+    if (hostPoisoned) {
+      // Security fix: a Host-header-poisoned request must NOT create a valid reset
+      // authorization for the victim. The link is never registered as a usable reset token
+      // (never added to resetLinks / userToTomResetLink), so even if it is observed it cannot
+      // be used to change the victim's password.
+      fakeClickingLinkEmail(webWolfURL, resetLink);
+    } else {
+      ResetLinkAssignment.resetLinks.add(resetLink);
+      try {
+        sendMailToUser(email, host, resetLink);
+      } catch (Exception e) {
+        return failed(this).output("E-mail can't be send. please try again.").build();
+      }
     }
     return informationMessage(this).feedback("email.send").feedbackArgs(email).build();
   }
