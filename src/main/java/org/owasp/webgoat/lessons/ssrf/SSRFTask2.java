@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 @AssignmentHints({"ssrf.hint3"})
 public class SSRFTask2 implements AssignmentEndpoint {
 
+  private static final java.util.Set<String> ALLOWED_URLS = java.util.Set.of();
+
   @PostMapping("/SSRF/task2")
   @ResponseBody
   public AttackResult completed(@RequestParam String url) {
@@ -31,7 +33,8 @@ public class SSRFTask2 implements AssignmentEndpoint {
   }
 
   protected AttackResult furBall(String url) {
-    if (url.matches("http://ifconfig\\.pro")) {
+    // Security fix: the server does not fetch arbitrary client-supplied URLs.
+    if (ALLOWED_URLS.contains(url)) {
       String html;
       try (InputStream in = new URL(url).openStream()) {
         html =

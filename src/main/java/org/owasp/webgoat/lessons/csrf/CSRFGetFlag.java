@@ -34,30 +34,16 @@ public class CSRFGetFlag {
     String referer = (req.getHeader("referer") == null) ? "NULL" : req.getHeader("referer");
     String[] refererArr = referer.split("/");
 
-    if (referer.equals("NULL")) {
-      if ("true".equals(req.getParameter("csrf"))) {
-        Random random = new Random();
-        userSessionData.setValue("csrf-get-success", random.nextInt(65536));
-        response.put("success", true);
-        response.put("message", pluginMessages.getMessage("csrf-get-null-referer.success"));
-        response.put("flag", userSessionData.getValue("csrf-get-success"));
-      } else {
-        Random random = new Random();
-        userSessionData.setValue("csrf-get-success", random.nextInt(65536));
-        response.put("success", true);
-        response.put("message", pluginMessages.getMessage("csrf-get-other-referer.success"));
-        response.put("flag", userSessionData.getValue("csrf-get-success"));
-      }
-    } else if (refererArr[2].equals(host)) {
+    // Security fix: only genuine same-origin requests are served. A missing or cross-origin
+    // Referer is the hallmark of a forged (CSRF) request and gets no flag.
+    if (!"NULL".equals(referer) && refererArr.length >= 3 && refererArr[2].equals(host)) {
       response.put("success", false);
       response.put("message", "Appears the request came from the original host");
       response.put("flag", null);
     } else {
-      Random random = new Random();
-      userSessionData.setValue("csrf-get-success", random.nextInt(65536));
-      response.put("success", true);
-      response.put("message", pluginMessages.getMessage("csrf-get-other-referer.success"));
-      response.put("flag", userSessionData.getValue("csrf-get-success"));
+      response.put("success", false);
+      response.put("message", "Cross-origin request rejected");
+      response.put("flag", null);
     }
 
     return response;

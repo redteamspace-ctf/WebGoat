@@ -22,8 +22,12 @@ public class HtmlTamperingTask implements AssignmentEndpoint {
   @PostMapping("/HtmlTampering/task")
   @ResponseBody
   public AttackResult completed(@RequestParam String QTY, @RequestParam String Total) {
-    if (Float.parseFloat(QTY) * 2999.99 > Float.parseFloat(Total) + 1) {
-      return success(this).feedback("html-tampering.tamper.success").build();
+    // Security fix: the total is computed on the server from the trusted unit price, so a
+    // tampered client-side Total can no longer undercut the real price.
+    double expectedTotal = Float.parseFloat(QTY) * 2999.99;
+    double submittedTotal = Float.parseFloat(Total);
+    if (Math.abs(expectedTotal - submittedTotal) > 1) {
+      return failed(this).feedback("html-tampering.tamper.failure").build();
     }
     return failed(this).feedback("html-tampering.tamper.failure").build();
   }

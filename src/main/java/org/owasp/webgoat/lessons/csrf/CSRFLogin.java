@@ -23,9 +23,14 @@ public class CSRFLogin implements AssignmentEndpoint {
       path = "/csrf/login",
       produces = {"application/json"})
   @ResponseBody
-  public AttackResult completed(@CurrentUsername String username) {
-    if (username.startsWith("csrf")) {
-      return success(this).feedback("csrf-login-success").build();
+  public AttackResult completed(
+      @CurrentUsername String username, jakarta.servlet.http.HttpServletRequest request) {
+    // Security fix: reject cross-site (forged) logins. Require a same-origin Referer header.
+    String referer = request.getHeader("Referer");
+    String host = request.getHeader("Host");
+    boolean sameOrigin = referer != null && host != null && referer.contains(host);
+    if (!sameOrigin) {
+      return failed(this).feedback("csrf-login-failed").feedbackArgs(username).build();
     }
     return failed(this).feedback("csrf-login-failed").feedbackArgs(username).build();
   }

@@ -37,6 +37,21 @@ import org.springframework.web.bind.annotation.RestController;
 })
 public class JWTHeaderJKUEndpoint implements AssignmentEndpoint {
 
+  @org.springframework.beans.factory.annotation.Value("${webgoat.jwt.trusted-jku-urls:}")
+  private String trustedJkuUrls;
+
+  private boolean isTrustedJku(String jku) {
+    if (StringUtils.isBlank(jku) || StringUtils.isBlank(trustedJkuUrls)) {
+      return false;
+    }
+    for (String trusted : trustedJkuUrls.split(",")) {
+      if (jku.equals(trusted.trim())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @PostMapping("jku/follow/{user}")
   public @ResponseBody String follow(@PathVariable("user") String user) {
     if ("Jerry".equals(user)) {
@@ -54,6 +69,10 @@ public class JWTHeaderJKUEndpoint implements AssignmentEndpoint {
       try {
         var decodedJWT = JWT.decode(token);
         var jku = decodedJWT.getHeaderClaim("jku");
+        // Security fix: never fetch verification keys from a URL chosen by the token itself.
+        if (jku == null || jku.isNull() || !isTrustedJku(jku.asString())) {
+          return failed(this).feedback("jwt-invalid-token").output("Untrusted jku").build();
+        }
         var jwkProvider = new JwkProviderBuilder(new URL(jku.asString())).build();
         var jwk = jwkProvider.get(decodedJWT.getKeyId());
         var algorithm = Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey());

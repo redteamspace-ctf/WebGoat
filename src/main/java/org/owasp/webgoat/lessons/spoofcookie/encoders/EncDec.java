@@ -6,8 +6,8 @@ package org.owasp.webgoat.lessons.spoofcookie.encoders;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.security.crypto.codec.Hex;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /***
  *
@@ -17,54 +17,57 @@ import org.springframework.security.crypto.codec.Hex;
 
 public class EncDec {
 
-  // PoC: weak encoding method
-
-  private static final String SALT = RandomStringUtils.randomAlphabetic(10);
+  // Security fix: the cookie is an HMAC-tagged token signed with a per-instance secret key.
+  // The username can no longer be decoded-and-re-encoded for another user, because the tag
+  // cannot be produced without the server-side secret.
+  private static final byte[] SECRET_KEY = newSecretKey();
+  private static final String HMAC_ALG = "HmacSHA256";
+  private static final String SEP = "|";
 
   private EncDec() {}
+
+  private static byte[] newSecretKey() {
+    byte[] key = new byte[32];
+    new java.security.SecureRandom().nextBytes(key);
+    return key;
+  }
+
+  private static byte[] tag(String value) {
+    try {
+      Mac mac = Mac.getInstance(HMAC_ALG);
+      mac.init(new SecretKeySpec(SECRET_KEY, HMAC_ALG));
+      return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
 
   public static String encode(final String value) {
     if (value == null) {
       return null;
     }
-
-    String encoded = value.toLowerCase() + SALT;
-    encoded = revert(encoded);
-    encoded = hexEncode(encoded);
-    return base64Encode(encoded);
+    String username = value.toLowerCase();
+    String signature = Base64.getUrlEncoder().withoutPadding().encodeToString(tag(username));
+    String token = username + SEP + signature;
+    return Base64.getEncoder().encodeToString(token.getBytes(StandardCharsets.UTF_8));
   }
 
   public static String decode(final String encodedValue) throws IllegalArgumentException {
     if (encodedValue == null) {
       return null;
     }
-
-    String decoded = base64Decode(encodedValue);
-    decoded = hexDecode(decoded);
-    decoded = revert(decoded);
-    return decoded.substring(0, decoded.length() - SALT.length());
-  }
-
-  private static String revert(final String value) {
-    return new StringBuilder(value).reverse().toString();
-  }
-
-  private static String hexEncode(final String value) {
-    char[] encoded = Hex.encode(value.getBytes(StandardCharsets.UTF_8));
-    return new String(encoded);
-  }
-
-  private static String hexDecode(final String value) {
-    byte[] decoded = Hex.decode(value);
-    return new String(decoded);
-  }
-
-  private static String base64Encode(final String value) {
-    return Base64.getEncoder().encodeToString(value.getBytes());
-  }
-
-  private static String base64Decode(final String value) {
-    byte[] decoded = Base64.getDecoder().decode(value.getBytes());
-    return new String(decoded);
+    String token = new String(Base64.getDecoder().decode(encodedValue), StandardCharsets.UTF_8);
+    int idx = token.lastIndexOf(SEP);
+    if (idx < 0) {
+      throw new IllegalArgumentException("Malformed authentication token");
+    }
+    String username = token.substring(0, idx);
+    String signature = token.substring(idx + SEP.length());
+    String expected = Base64.getUrlEncoder().withoutPadding().encodeToString(tag(username));
+    if (!java.security.MessageDigest.isEqual(
+        expected.getBytes(StandardCharsets.UTF_8), signature.getBytes(StandardCharsets.UTF_8))) {
+      throw new IllegalArgumentException("Invalid authentication token signature");
+    }
+    return username;
   }
 }

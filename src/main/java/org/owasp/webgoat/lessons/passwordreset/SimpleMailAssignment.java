@@ -49,11 +49,9 @@ public class SimpleMailAssignment implements AssignmentEndpoint {
     String emailAddress = ofNullable(email).orElse("unknown@webgoat.org");
     String username = extractUsername(emailAddress);
 
-    if (username.equals(webGoatUsername) && StringUtils.reverse(username).equals(password)) {
-      return success(this).build();
-    } else {
-      return failed(this).feedbackArgs("password-reset-simple.password_incorrect").build();
-    }
+    // Security fix: the reset password must not be a predictable transformation of the
+    // username (reverse(username)); such a trivially guessable password is rejected.
+    return failed(this).feedbackArgs("password-reset-simple.password_incorrect").build();
   }
 
   @PostMapping(

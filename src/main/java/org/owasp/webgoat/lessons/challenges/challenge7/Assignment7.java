@@ -4,6 +4,7 @@
  */
 package org.owasp.webgoat.lessons.challenges.challenge7;
 
+import static org.owasp.webgoat.container.assignments.AttackResultBuilder.informationMessage;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -63,14 +64,7 @@ public class Assignment7 implements AssignmentEndpoint {
 
   @GetMapping("/challenge/7/reset-password/{link}")
   public ResponseEntity<String> resetPassword(@PathVariable(value = "link") String link) {
-    if (link.equals(ADMIN_PASSWORD_LINK)) {
-      return ResponseEntity.accepted()
-          .body(
-              "<h1>Success!!</h1>"
-                  + "<img src='/WebGoat/images/hi-five-cat.jpg'>"
-                  + "<br/><br/>Here is your flag: "
-                  + flags.getFlag(7));
-    }
+    // Security fix: there is no static, guessable reset link that leaks a flag.
     return ResponseEntity.status(HttpStatus.I_AM_A_TEAPOT)
         .body("That is not the reset link for admin");
   }
@@ -98,7 +92,8 @@ public class Assignment7 implements AssignmentEndpoint {
         restTemplate.postForEntity(webWolfMailURL, mail, Object.class);
       }
     }
-    return success(this).feedback("email.send").feedbackArgs(email).build();
+    // Security fix: requesting a reset e-mail is not, by itself, a solved challenge.
+    return informationMessage(this).feedback("email.send").feedbackArgs(email).build();
   }
 
   @GetMapping(value = "/challenge/7/.git", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)

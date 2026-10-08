@@ -43,8 +43,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class JWTRefreshEndpoint implements AssignmentEndpoint {
 
   public static final String PASSWORD = "bm5nhSkxCXZkKRy4";
-  private static final String JWT_PASSWORD = "bm5n3SkxCX4kKRy4";
-  private static final List<String> validRefreshTokens = new ArrayList<>();
+  private static final String JWT_PASSWORD =
+      io.jsonwebtoken.impl.TextCodec.BASE64.encode(randomKey());
+  // refresh token -> user it was issued to
+  private static final Map<String, String> validRefreshTokens =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  private static byte[] randomKey() {
+    byte[] key = new byte[64];
+    new java.security.SecureRandom().nextBytes(key);
+    return key;
+  }
 
   @PostMapping(
       value = "/JWT/refresh/login",
@@ -73,8 +82,8 @@ public class JWTRefreshEndpoint implements AssignmentEndpoint {
             .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_PASSWORD)
             .compact();
     Map<String, Object> tokenJson = new HashMap<>();
-    String refreshToken = RandomStringUtils.randomAlphabetic(20);
-    validRefreshTokens.add(refreshToken);
+    String refreshToken = RandomStringUtils.random(32, 0, 0, true, true, null, new java.security.SecureRandom());
+    validRefreshTokens.put(refreshToken, user);
     tokenJson.put("access_token", token);
     tokenJson.put("refresh_token", refreshToken);
     return tokenJson;
@@ -88,7 +97,8 @@ public class JWTRefreshEndpoint implements AssignmentEndpoint {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
     try {
-      Jwt jwt = Jwts.parser().setSigningKey(JWT_PASSWORD).parse(token.replace("Bearer ", ""));
+      Jwt jwt =
+          Jwts.parser().setSigningKey(JWT_PASSWORD).parseClaimsJws(token.replace("Bearer ", ""));
       Claims claims = (Claims) jwt.getBody();
       String user = (String) claims.get("user");
       if ("Tom".equals(user)) {
@@ -117,8 +127,8 @@ public class JWTRefreshEndpoint implements AssignmentEndpoint {
     String user;
     String refreshToken;
     try {
-      Jwt<Header, Claims> jwt =
-          Jwts.parser().setSigningKey(JWT_PASSWORD).parse(token.replace("Bearer ", ""));
+      Jwt<?, Claims> jwt =
+          Jwts.parser().setSigningKey(JWT_PASSWORD).parseClaimsJws(token.replace("Bearer ", ""));
       user = (String) jwt.getBody().get("user");
       refreshToken = (String) json.get("refresh_token");
     } catch (ExpiredJwtException e) {
@@ -128,7 +138,7 @@ public class JWTRefreshEndpoint implements AssignmentEndpoint {
 
     if (user == null || refreshToken == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-    } else if (validRefreshTokens.contains(refreshToken)) {
+    } else if (user.equals(validRefreshTokens.get(refreshToken))) {
       validRefreshTokens.remove(refreshToken);
       return ok(createNewTokens(user));
     } else {

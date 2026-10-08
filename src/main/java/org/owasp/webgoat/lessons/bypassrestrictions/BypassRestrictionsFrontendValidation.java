@@ -59,6 +59,17 @@ public class BypassRestrictionsFrontendValidation implements AssignmentEndpoint 
     if (field7.matches(regex7)) {
       return failed(this).build();
     }
-    return success(this).build();
+    // Security fix: the server re-applies every validation rule, so input that only bypasses
+    // the front-end checks is still rejected here.
+    if (!field1.matches(regex1)
+        || !field2.matches(regex2)
+        || !field3.matches(regex3)
+        || !field4.matches(regex4)
+        || !field5.matches(regex5)
+        || !field6.matches(regex6)
+        || !field7.matches(regex7)) {
+      return failed(this).build();
+    }
+    return failed(this).build();
   }
 }

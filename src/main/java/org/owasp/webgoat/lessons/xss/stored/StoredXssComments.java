@@ -76,6 +76,11 @@ public class StoredXssComments implements AssignmentEndpoint {
       @RequestBody String commentStr, @CurrentUsername String username) {
     Comment comment = parseJson(commentStr);
 
+    // Security fix: HTML-encode stored user content so it is rendered as text, not executed.
+    if (comment.getText() != null) {
+      comment.setText(org.springframework.web.util.HtmlUtils.htmlEscape(comment.getText()));
+    }
+
     List<Comment> comments = userComments.getOrDefault(username, new ArrayList<>());
     comment.setDateTime(LocalDateTime.now().format(fmt));
     comment.setUser(username);

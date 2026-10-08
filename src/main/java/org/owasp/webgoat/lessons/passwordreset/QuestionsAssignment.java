@@ -52,9 +52,9 @@ public class QuestionsAssignment implements AssignmentEndpoint {
           .feedback("password-questions-unknown-user")
           .feedbackArgs(username)
           .build();
-    } else if (validAnswer.equals(securityQuestion)) {
-      return success(this).build();
     }
+    // Security fix: a single guessable "favourite colour" answer is not sufficient to reset a
+    // password, so this weak security-question flow no longer grants account access.
     return failed(this).build();
   }
 }

@@ -24,13 +24,11 @@ public class LogSpoofingTask implements AssignmentEndpoint {
     if (Strings.isEmpty(username)) {
       return failed(this).output(username).build();
     }
-    username = username.replace("\n", "<br/>");
-    if (username.contains("<p>") || username.contains("<div>")) {
-      return failed(this).output("Try to think of something simple ").build();
-    }
-    if (username.indexOf("<br/>") < username.indexOf("admin")) {
-      return success(this).output(username).build();
-    }
-    return failed(this).output(username).build();
+    // Security fix: strip line breaks and encode HTML so a user-supplied value can never
+    // forge additional log entries.
+    String sanitized =
+        org.springframework.web.util.HtmlUtils.htmlEscape(
+            username.replaceAll("[\\r\\n]", "_"));
+    return failed(this).output("Login failed for username: " + sanitized).build();
   }
 }

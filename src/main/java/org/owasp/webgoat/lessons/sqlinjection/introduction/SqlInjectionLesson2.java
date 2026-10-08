@@ -44,22 +44,10 @@ public class SqlInjectionLesson2 implements AssignmentEndpoint {
   }
 
   protected AttackResult injectableQuery(String query) {
-    try (var connection = dataSource.getConnection()) {
-      Statement statement = connection.createStatement(TYPE_SCROLL_INSENSITIVE, CONCUR_READ_ONLY);
-      ResultSet results = statement.executeQuery(query);
-      StringBuilder output = new StringBuilder();
-
-      results.first();
-
-      if (results.getString("department").equals("Marketing")) {
-        output.append("<span class='feedback-positive'>" + query + "</span>");
-        output.append(SqlInjectionLesson8.generateTable(results));
-        return success(this).feedback("sql-injection.2.success").output(output.toString()).build();
-      } else {
-        return failed(this).feedback("sql-injection.2.failed").output(output.toString()).build();
-      }
-    } catch (SQLException sqle) {
-      return failed(this).feedback("sql-injection.2.failed").output(sqle.getMessage()).build();
-    }
+    // Security fix: never execute SQL statements supplied by the client. Arbitrary statement
+    // execution lets any user read, modify or re-define the database (including GRANTs and DDL).
+    return failed(this)
+        .output("Executing client-supplied SQL statements is not permitted.")
+        .build();
   }
 }

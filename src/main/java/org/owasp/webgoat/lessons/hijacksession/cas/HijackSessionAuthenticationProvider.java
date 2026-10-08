@@ -32,8 +32,14 @@ public class HijackSessionAuthenticationProvider implements AuthenticationProvid
   private static final DoublePredicate PROBABILITY_DOUBLE_PREDICATE = pr -> pr < 0.75;
   private static final Supplier<String> GENERATE_SESSION_ID =
       () -> ++id + "-" + Instant.now().toEpochMilli();
+  private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
+
+  // Security fix: privileged (auto-login) sessions get a cryptographically random, unguessable
+  // identifier instead of a predictable incrementing counter + timestamp.
+  private static final Supplier<String> SECURE_SESSION_ID =
+      () -> new java.math.BigInteger(130, SECURE_RANDOM).toString() + "-" + java.util.UUID.randomUUID();
   public static final Supplier<Authentication> AUTHENTICATION_SUPPLIER =
-      () -> Authentication.builder().id(GENERATE_SESSION_ID.get()).build();
+      () -> Authentication.builder().id(SECURE_SESSION_ID.get()).build();
 
   @Override
   public Authentication authenticate(Authentication authentication) {

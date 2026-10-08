@@ -42,8 +42,10 @@ public class Assignment8 implements AssignmentEndpoint {
   public ResponseEntity<?> vote(
       @PathVariable(value = "stars") int nrOfStars, HttpServletRequest request) {
     // Simple implementation of VERB Based Authentication
-    String msg = "";
-    if (request.getMethod().equals("GET")) {
+    // Security fix: authorization must not depend on the HTTP verb. Read-style verbs
+    // (GET and the GET-aliased HEAD) are always treated as unauthenticated and leak no flag.
+    String method = request.getMethod();
+    if ("GET".equals(method) || "HEAD".equals(method)) {
       var json =
           Map.of("error", true, "message", "Sorry but you need to login first in order to vote");
       return ResponseEntity.status(200).body(json);
