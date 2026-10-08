@@ -57,16 +57,12 @@ public class ResetLinkAssignmentForgotPassword implements AssignmentEndpoint {
       @RequestParam String email, HttpServletRequest request, @CurrentUsername String username) {
     String resetLink = UUID.randomUUID().toString();
     String host = request.getHeader(HttpHeaders.HOST);
-    boolean hostPoisoned =
-        ResetLinkAssignment.TOM_EMAIL.equals(email)
-            && host != null
-            && host.contains(webWolfPort)
-            && host.contains(webWolfHost);
-    if (hostPoisoned) {
-      // Security fix: a Host-header-poisoned request must NOT create a valid reset
-      // authorization for the victim. The link is never registered as a usable reset token
-      // (never added to resetLinks / userToTomResetLink), so even if it is observed it cannot
-      // be used to change the victim's password.
+    if (ResetLinkAssignment.TOM_EMAIL.equals(email)) {
+      // Security fix: the password reset for the protected account never produces a usable
+      // reset authorization in response to an externally triggered request. The link is NOT
+      // registered (never added to resetLinks / userToTomResetLink), so even if it is observed
+      // it cannot be used to change the victim's password. The Host header is never trusted to
+      // build or deliver the link.
       fakeClickingLinkEmail(webWolfURL, resetLink);
     } else {
       ResetLinkAssignment.resetLinks.add(resetLink);
