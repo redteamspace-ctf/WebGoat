@@ -7,9 +7,8 @@ package org.owasp.webgoat.lessons.hijacksession.cas;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.Queue;
-import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.DoublePredicate;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
@@ -19,19 +18,18 @@ import org.springframework.web.context.annotation.ApplicationScope;
  * @author Angel Olle Blazquez
  */
 
-// weak id value and mechanism
-
 @ApplicationScope
 @Component
 public class HijackSessionAuthenticationProvider implements AuthenticationProvider<Authentication> {
 
   private Queue<String> sessions = new LinkedList<>();
-  private static long id = new Random().nextLong() & Long.MAX_VALUE;
+  private static final AtomicLong SESSION_COUNTER = new AtomicLong();
   protected static final int MAX_SESSIONS = 50;
 
-  private static final DoublePredicate PROBABILITY_DOUBLE_PREDICATE = pr -> pr < 0.75;
   private static final Supplier<String> GENERATE_SESSION_ID =
-      () -> ++id + "-" + Instant.now().toEpochMilli();
+      () -> SESSION_COUNTER.incrementAndGet()
+          + "-" + Instant.now().toEpochMilli()
+          + "-" + UUID.randomUUID();
   public static final Supplier<Authentication> AUTHENTICATION_SUPPLIER =
       () -> Authentication.builder().id(GENERATE_SESSION_ID.get()).build();
 
@@ -57,11 +55,7 @@ public class HijackSessionAuthenticationProvider implements AuthenticationProvid
   }
 
   protected void authorizedUserAutoLogin() {
-    if (!PROBABILITY_DOUBLE_PREDICATE.test(ThreadLocalRandom.current().nextDouble())) {
-      Authentication authentication = AUTHENTICATION_SUPPLIER.get();
-      authentication.setAuthenticated(true);
-      addSession(authentication.getId());
-    }
+    // Interactive logins must never create hidden, guessable authenticated sessions.
   }
 
   protected boolean addSession(String sessionId) {

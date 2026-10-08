@@ -24,13 +24,14 @@ public class LogSpoofingTask implements AssignmentEndpoint {
     if (Strings.isEmpty(username)) {
       return failed(this).output(username).build();
     }
-    username = username.replace("\n", "<br/>");
+    if (username.contains("\r") || username.contains("\n")) {
+      return failed(this).output(org.springframework.web.util.HtmlUtils.htmlEscape(
+          username.replace("\r", "").replace("\n", ""))).build();
+    }
+    username = username.replace("\r", "").replace("\n", "");
     if (username.contains("<p>") || username.contains("<div>")) {
       return failed(this).output("Try to think of something simple ").build();
     }
-    if (username.indexOf("<br/>") < username.indexOf("admin")) {
-      return success(this).output(username).build();
-    }
-    return failed(this).output(username).build();
+    return failed(this).output(org.springframework.web.util.HtmlUtils.htmlEscape(username)).build();
   }
 }
