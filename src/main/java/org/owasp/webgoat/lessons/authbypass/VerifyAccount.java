@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright © 2017 WebGoat authors
+ * SPDX-FileCopyrightText: Copyright © 2018 WebGoat authors
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 package org.owasp.webgoat.lessons.authbypass;
@@ -23,6 +23,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Created by jason on 1/5/17.
+ */
 @RestController
 @AssignmentHints({
   "auth-bypass.hints.verify.1",
@@ -31,6 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
   "auth-bypass.hints.verify.4"
 })
 public class VerifyAccount implements AssignmentEndpoint {
+
+  private static final List<String> REQUIRED_QUESTIONS = List.of("secQuestion0", "secQuestion1");
 
   private final LessonSession userSessionData;
 
@@ -46,16 +51,30 @@ public class VerifyAccount implements AssignmentEndpoint {
       @RequestParam String userId, @RequestParam String verifyMethod, HttpServletRequest req)
       throws ServletException, IOException {
     AccountVerificationHelper verificationHelper = new AccountVerificationHelper();
-    Map<String, String> submittedAnswers = parseSecQuestions(req);
-    if (verificationHelper.didUserLikelylCheat((HashMap) submittedAnswers)) {
+    HashMap<String, String> submittedAnswers = parseSecQuestions(req);
+
+    // Only the registered security questions are accepted; any other or missing parameter
+    // means the verification cannot be performed at all.
+    if (!submittedAnswers.keySet().containsAll(REQUIRED_QUESTIONS)
+        || submittedAnswers.size() != REQUIRED_QUESTIONS.size()) {
+      return failed(this).feedback("verify-account.failed").build();
+    }
+
+    Integer accountId;
+    try {
+      accountId = Integer.valueOf(userId);
+    } catch (NumberFormatException e) {
+      return failed(this).feedback("verify-account.failed").build();
+    }
+
+    if (verificationHelper.didUserLikelylCheat(submittedAnswers)) {
       return failed(this)
           .feedback("verify-account.cheated")
           .output("Yes, you guessed correctly, but see the feedback message")
           .build();
     }
 
-    // else
-    if (verificationHelper.verifyAccount(Integer.valueOf(userId), (HashMap) submittedAnswers)) {
+    if (verificationHelper.verifyAccount(accountId, submittedAnswers)) {
       userSessionData.setValue("account-verified-id", userId);
       return success(this).feedback("verify-account.success").build();
     } else {
@@ -64,14 +83,16 @@ public class VerifyAccount implements AssignmentEndpoint {
   }
 
   private HashMap<String, String> parseSecQuestions(HttpServletRequest req) {
-    Map<String, String> userAnswers = new HashMap<>();
+    HashMap<String, String> userAnswers = new HashMap<>();
     List<String> paramNames = Collections.list(req.getParameterNames());
     for (String paramName : paramNames) {
-      // String paramName = req.getParameterNames().nextElement();
-      if (paramName.contains("secQuestion")) {
+      if (REQUIRED_QUESTIONS.contains(paramName)) {
+        userAnswers.put(paramName, req.getParameter(paramName));
+      } else if (paramName.contains("secQuestion")) {
+        // remember that an unknown question was submitted so the size check fails
         userAnswers.put(paramName, req.getParameter(paramName));
       }
     }
-    return (HashMap) userAnswers;
+    return userAnswers;
   }
 }

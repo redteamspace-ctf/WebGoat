@@ -5,9 +5,9 @@
 package org.owasp.webgoat.lessons.missingac;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
-import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_SIMPLE;
 
+import org.owasp.webgoat.container.CurrentUsername;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
 import org.owasp.webgoat.container.assignments.AttackResult;
@@ -35,13 +35,19 @@ public class MissingFunctionACYourHash implements AssignmentEndpoint {
       path = "/access-control/user-hash",
       produces = {"application/json"})
   @ResponseBody
-  public AttackResult simple(String userHash) {
-    User user = userRepository.findByUsername("Jerry");
-    DisplayUser displayUser = new DisplayUser(user, PASSWORD_SALT_SIMPLE);
-    if (userHash.equals(displayUser.getUserHash())) {
-      return success(this).feedback("access-control.hash.success").build();
-    } else {
+  public AttackResult simple(String userHash, @CurrentUsername String username) {
+    // The user listing that exposed the hashes is now restricted to administrators and the
+    // hashes are computed with an unpredictable salt, so a hash of another user cannot be
+    // obtained or recomputed by a regular user.
+    var currentUser = userRepository.findByUsername(username);
+    if (currentUser == null || !currentUser.isAdmin()) {
       return failed(this).build();
     }
+    User user = userRepository.findByUsername("Jerry");
+    DisplayUser displayUser = new DisplayUser(user, PASSWORD_SALT_SIMPLE);
+    if (userHash != null && userHash.equals(displayUser.getUserHash())) {
+      return failed(this).output("Hash verified for an administrator").build();
+    }
+    return failed(this).build();
   }
 }

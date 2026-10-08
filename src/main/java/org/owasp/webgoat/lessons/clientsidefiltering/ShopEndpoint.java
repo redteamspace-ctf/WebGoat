@@ -40,6 +40,9 @@ public class ShopEndpoint {
     private int discount;
   }
 
+  private static final java.util.Map<String, Integer> KNOWN_CODES =
+      java.util.Map.of("webgoat", 25, "owasp", 25, "owasp-webgoat", 50);
+
   private CheckoutCodes checkoutCodes;
 
   public ShopEndpoint() {
@@ -52,17 +55,20 @@ public class ShopEndpoint {
 
   @GetMapping(value = "/coupons/{code}", produces = MediaType.APPLICATION_JSON_VALUE)
   public CheckoutCode getDiscountCode(@PathVariable String code) {
-    if (ClientSideFilteringFreeAssignment.SUPER_COUPON_CODE.equals(code)) {
-      return new CheckoutCode(ClientSideFilteringFreeAssignment.SUPER_COUPON_CODE, 100);
-    }
     return checkoutCodes.get(code).orElse(new CheckoutCode("no", 0));
+  }
+
+  static int discountFor(String code) {
+    if (code == null) {
+      return 0;
+    }
+    return KNOWN_CODES.getOrDefault(code, 0);
   }
 
   @GetMapping(value = "/coupons", produces = MediaType.APPLICATION_JSON_VALUE)
   public CheckoutCodes all() {
     List<CheckoutCode> all = Lists.newArrayList();
     all.addAll(this.checkoutCodes.getCodes());
-    all.add(new CheckoutCode(ClientSideFilteringFreeAssignment.SUPER_COUPON_CODE, 100));
     return new CheckoutCodes(all);
   }
 }

@@ -6,12 +6,12 @@ package org.owasp.webgoat.lessons.pathtraversal;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.informationMessage;
-import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -48,21 +48,48 @@ public class ProfileUploadBase implements AssignmentEndpoint {
     File uploadDirectory = cleanupAndCreateDirectoryForUser(username);
 
     try {
-      var uploadedFile = new File(uploadDirectory, fullName);
+      // Only a plain file name is accepted: path separators and parent directory references are
+      // rejected and the resolved location is verified to be inside the user's upload directory.
+      Path uploadRoot = uploadDirectory.toPath().toRealPath();
+      Path destination = safeDestination(uploadRoot, fullName);
+      if (destination == null) {
+        return failed(this)
+            .feedback("path-traversal-profile-attempt")
+            .feedbackArgs(uploadRoot.resolve("rejected").toString())
+            .build();
+      }
+      var uploadedFile = destination.toFile();
       uploadedFile.createNewFile();
       FileCopyUtils.copy(file.getBytes(), uploadedFile);
 
-      if (attemptWasMade(uploadDirectory, uploadedFile)) {
-        return solvedIt(uploadedFile);
-      }
       return informationMessage(this)
           .feedback("path-traversal-profile-updated")
           .feedbackArgs(uploadedFile.getAbsoluteFile())
           .build();
-
     } catch (IOException e) {
       return failed(this).output(e.getMessage()).build();
     }
+  }
+
+  /**
+   * Resolves {@code fileName} inside {@code uploadRoot}, returning {@code null} when the name
+   * contains path elements or would escape the upload directory.
+   */
+  protected static Path safeDestination(Path uploadRoot, String fileName) {
+    if (fileName == null || fileName.isBlank()) {
+      return null;
+    }
+    if (fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) {
+      return null;
+    }
+    if (fileName.chars().anyMatch(c -> c < 0x20)) {
+      return null;
+    }
+    Path destination = uploadRoot.resolve(fileName).normalize();
+    if (!destination.startsWith(uploadRoot) || !uploadRoot.equals(destination.getParent())) {
+      return null;
+    }
+    return destination;
   }
 
   @SneakyThrows
@@ -73,24 +100,6 @@ public class ProfileUploadBase implements AssignmentEndpoint {
     }
     Files.createDirectories(uploadDirectory.toPath());
     return uploadDirectory;
-  }
-
-  private boolean attemptWasMade(File expectedUploadDirectory, File uploadedFile)
-      throws IOException {
-    return !expectedUploadDirectory
-        .getCanonicalPath()
-        .equals(uploadedFile.getParentFile().getCanonicalPath());
-  }
-
-  private AttackResult solvedIt(File uploadedFile) throws IOException {
-    if (uploadedFile.getCanonicalFile().getParentFile().getName().endsWith("PathTraversal")) {
-      return success(this).build();
-    }
-    return failed(this)
-        .attemptWasMade()
-        .feedback("path-traversal-profile-attempt")
-        .feedbackArgs(uploadedFile.getCanonicalPath())
-        .build();
   }
 
   public ResponseEntity<?> getProfilePicture(@CurrentUsername String username) {

@@ -13,14 +13,16 @@ import io.jsonwebtoken.Jwt;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SigningKeyResolverAdapter;
-import io.jsonwebtoken.impl.TextCodec;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.StringUtils;
 import org.owasp.webgoat.container.LessonDataSource;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
 import org.owasp.webgoat.container.assignments.AttackResult;
+import org.owasp.webgoat.lessons.jwt.SigningSecrets;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,6 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 })
 @RequestMapping("/JWT/")
 public class JWTHeaderKIDEndpoint implements AssignmentEndpoint {
+  private static final Map<String, byte[]> SIGNING_KEYS = new ConcurrentHashMap<>();
   private final LessonDataSource dataSource;
 
   private JWTHeaderKIDEndpoint(LessonDataSource dataSource) {
@@ -68,14 +71,20 @@ public class JWTHeaderKIDEndpoint implements AssignmentEndpoint {
                       @Override
                       public byte[] resolveSigningKeyBytes(JwsHeader header, Claims claims) {
                         final String kid = (String) header.get("kid");
-                        try (var connection = dataSource.getConnection()) {
-                          ResultSet rs =
-                              connection
-                                  .createStatement()
-                                  .executeQuery(
-                                      "SELECT key FROM jwt_keys WHERE id = '" + kid + "'");
-                          while (rs.next()) {
-                            return TextCodec.BASE64.decode(rs.getString(1));
+                        if (kid == null || !kid.matches("[A-Za-z0-9_-]{1,20}")) {
+                          return null;
+                        }
+                        // the key id is validated against the key registry with a bound
+                        // parameter, the user supplied value never becomes part of the query
+                        try (var connection = dataSource.getConnection();
+                            var statement =
+                                connection.prepareStatement(
+                                    "SELECT id FROM jwt_keys WHERE id = ?")) {
+                          statement.setString(1, kid);
+                          try (ResultSet rs = statement.executeQuery()) {
+                            if (rs.next()) {
+                              return signingKeyFor(rs.getString(1));
+                            }
                           }
                         } catch (SQLException e) {
                           errorMessage[0] = e.getMessage();
@@ -97,9 +106,17 @@ public class JWTHeaderKIDEndpoint implements AssignmentEndpoint {
         } else {
           return failed(this).feedback("jwt-final-not-tom").build();
         }
-      } catch (JwtException e) {
+      } catch (JwtException | IllegalArgumentException e) {
         return failed(this).feedback("jwt-invalid-token").output(e.toString()).build();
       }
     }
+  }
+
+  /**
+   * The actual HMAC key material is secret, generated when the application starts and kept in
+   * memory only; the key registry table merely lists the valid key identifiers.
+   */
+  private static byte[] signingKeyFor(String keyId) {
+    return SIGNING_KEYS.computeIfAbsent(keyId, id -> SigningSecrets.newKeyBytes(64));
   }
 }

@@ -5,7 +5,7 @@
 package org.owasp.webgoat.lessons.idor;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
-import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
+import static org.owasp.webgoat.container.assignments.AttackResultBuilder.informationMessage;
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -42,28 +42,25 @@ public class IDORViewOtherProfile implements AssignmentEndpoint {
   @ResponseBody
   public AttackResult completed(@PathVariable("userId") String userId) {
 
-    Object obj = userSessionData.getValue("idor-authenticated-as");
-    if (obj != null && obj.equals("tom")) {
-      // going to use session auth to view this one
-      String authUserId = (String) userSessionData.getValue("idor-authenticated-user-id");
-      if (userId != null && !userId.equals(authUserId)) {
-        // on the right track
-        UserProfile requestedProfile = new UserProfile(userId);
-        // secure code would ensure there was a horizontal access control check prior to dishing up
-        // the requested profile
-        if (requestedProfile.getUserId() != null
-            && requestedProfile.getUserId().equals("2342388")) {
-          return success(this)
-              .feedback("idor.view.profile.success")
-              .output(requestedProfile.profileToMap().toString())
-              .build();
-        } else {
-          return failed(this).feedback("idor.view.profile.close1").build();
-        }
-      } else {
-        return failed(this).feedback("idor.view.profile.close2").build();
-      }
+    Object authenticatedAs = userSessionData.getValue("idor-authenticated-as");
+    String authUserId = (String) userSessionData.getValue("idor-authenticated-user-id");
+    if (authenticatedAs == null || authUserId == null) {
+      return failed(this).build();
     }
-    return failed(this).build();
+    // Horizontal access control: a user may only retrieve the profile that belongs to the
+    // authenticated session, whatever identifier is supplied in the URL.
+    if (userId == null || !userId.equals(authUserId)) {
+      return failed(this).feedback("idor.view.profile.close2").build();
+    }
+    UserProfile ownProfile = new UserProfile(authUserId);
+    return informationMessage(this)
+        .output(
+            "name: "
+                + ownProfile.getName()
+                + ", color: "
+                + ownProfile.getColor()
+                + ", size: "
+                + ownProfile.getSize())
+        .build();
   }
 }

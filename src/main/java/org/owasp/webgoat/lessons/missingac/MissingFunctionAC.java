@@ -11,8 +11,16 @@ import org.springframework.stereotype.Component;
 @Component
 public class MissingFunctionAC extends Lesson {
 
-  public static final String PASSWORD_SALT_SIMPLE = "DeliberatelyInsecure1234";
-  public static final String PASSWORD_SALT_ADMIN = "DeliberatelyInsecure1235";
+  // Salts are generated when the application starts: a salt that is a static value in the
+  // source code is predictable and lets anyone recompute the user hashes.
+  public static final String PASSWORD_SALT_SIMPLE = randomSalt();
+  public static final String PASSWORD_SALT_ADMIN = randomSalt();
+
+  private static String randomSalt() {
+    byte[] salt = new byte[32];
+    new java.security.SecureRandom().nextBytes(salt);
+    return java.util.Base64.getEncoder().encodeToString(salt);
+  }
 
   @Override
   public Category getDefaultCategory() {

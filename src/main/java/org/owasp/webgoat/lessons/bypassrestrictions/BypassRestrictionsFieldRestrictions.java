@@ -5,7 +5,6 @@
 package org.owasp.webgoat.lessons.bypassrestrictions;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
-import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AttackResult;
@@ -25,21 +24,19 @@ public class BypassRestrictionsFieldRestrictions implements AssignmentEndpoint {
       @RequestParam String checkbox,
       @RequestParam String shortInput,
       @RequestParam String readOnlyInput) {
-    if (select.equals("option1") || select.equals("option2")) {
-      return failed(this).build();
+    // Server-side validation: the browser restrictions are only a convenience, every value is
+    // validated again here and a request that does not respect them is rejected.
+    boolean valid =
+        ("option1".equals(select) || "option2".equals(select))
+            && ("option1".equals(radio) || "option2".equals(radio))
+            && ("on".equals(checkbox) || "off".equals(checkbox))
+            && shortInput.length() <= 5
+            && "change".equals(readOnlyInput);
+    if (!valid) {
+      return failed(this)
+          .output("The submitted values do not respect the field restrictions and were rejected")
+          .build();
     }
-    if (radio.equals("option1") || radio.equals("option2")) {
-      return failed(this).build();
-    }
-    if (checkbox.equals("on") || checkbox.equals("off")) {
-      return failed(this).build();
-    }
-    if (shortInput.length() <= 5) {
-      return failed(this).build();
-    }
-    if ("change".equals(readOnlyInput)) {
-      return failed(this).build();
-    }
-    return success(this).build();
+    return failed(this).output("All values respect the field restrictions").build();
   }
 }

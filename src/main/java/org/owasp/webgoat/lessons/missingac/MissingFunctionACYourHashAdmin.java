@@ -5,9 +5,9 @@
 package org.owasp.webgoat.lessons.missingac;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
-import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
 
+import org.owasp.webgoat.container.CurrentUsername;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
 import org.owasp.webgoat.container.assignments.AttackResult;
@@ -38,16 +38,17 @@ public class MissingFunctionACYourHashAdmin implements AssignmentEndpoint {
       path = "/access-control/user-hash-fix",
       produces = {"application/json"})
   @ResponseBody
-  public AttackResult admin(String userHash) {
-    // current user should be in the DB
-    // if not admin then return 403
-
-    var user = userRepository.findByUsername("Jerry");
-    var displayUser = new DisplayUser(user, PASSWORD_SALT_ADMIN);
-    if (userHash.equals(displayUser.getUserHash())) {
-      return success(this).feedback("access-control.hash.success").build();
-    } else {
+  public AttackResult admin(String userHash, @CurrentUsername String username) {
+    // current user should be in the DB and must be an administrator
+    var currentUser = userRepository.findByUsername(username);
+    if (currentUser == null || !currentUser.isAdmin()) {
       return failed(this).feedback("access-control.hash.close").build();
     }
+    var user = userRepository.findByUsername("Jerry");
+    var displayUser = new DisplayUser(user, PASSWORD_SALT_ADMIN);
+    if (userHash != null && userHash.equals(displayUser.getUserHash())) {
+      return failed(this).output("Hash verified for an administrator").build();
+    }
+    return failed(this).feedback("access-control.hash.close").build();
   }
 }
