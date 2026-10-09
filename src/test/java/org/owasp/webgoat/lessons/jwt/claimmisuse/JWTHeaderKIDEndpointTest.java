@@ -31,7 +31,7 @@ public class JWTHeaderKIDEndpointTest extends LessonTest {
   }
 
   @Test
-  public void solveAssignment() throws Exception {
+  public void sqlInjectionInKidIsRejected() throws Exception {
     String key = "deletingTom";
     Map<String, Object> claims = new HashMap<>();
     claims.put("username", "Tom");
@@ -46,18 +46,57 @@ public class JWTHeaderKIDEndpointTest extends LessonTest {
     mockMvc
         .perform(MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", token).content(""))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
-  public void withJerrysKeyShouldNotSolveAssignment() throws Exception {
+  public void tokenSignedWithPublishedStaticKeyIsRejected() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", TOKEN_JERRY).content(""))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)))
         .andExpect(
-            jsonPath(
-                "$.feedback", CoreMatchers.is(messages.getMessage("jwt-final-jerry-account"))));
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
+  }
+
+  @Test
+  public void tomForgedWithKnownDatabaseKeyIsRejected() throws Exception {
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("username", "Tom");
+    for (String[] kidAndKey :
+        new String[][] {
+          {"webgoat_key", "qwertyqwerty1234"}, {"webwolf_key", "doesnotreallymatter"}
+        }) {
+      String token =
+          Jwts.builder()
+              .setHeaderParam("kid", kidAndKey[0])
+              .setClaims(claims)
+              .signWith(io.jsonwebtoken.SignatureAlgorithm.HS256, kidAndKey[1])
+              .compact();
+      mockMvc
+          .perform(MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", token))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.lessonCompleted", is(false)));
+    }
+  }
+
+  @Test
+  public void pathTraversalOrUnknownKidIsRejected() throws Exception {
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("username", "Tom");
+    for (String kid : new String[] {"../../../../dev/null", "unknown", ""}) {
+      String token =
+          Jwts.builder()
+              .setHeaderParam("kid", kid)
+              .setClaims(claims)
+              .signWith(io.jsonwebtoken.SignatureAlgorithm.HS256, "AAAA")
+              .compact();
+      mockMvc
+          .perform(MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", token))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.lessonCompleted", is(false)));
+    }
   }
 
   @Test

@@ -74,29 +74,110 @@ class ResetLinkAssignmentTest extends LessonTest {
         .isNotNull();
   }
 
+  @Autowired private ResetTokenStore tokenStore;
+
+  private static org.springframework.test.web.servlet.ResultMatcher notCompleted() {
+    return org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
+            "$.lessonCompleted")
+        .value(false);
+  }
+
   @Test
-  void knownLinkShouldReturnPasswordResetPage() throws Exception {
-    // Create a reset link
+  void forgedHostHeaderIsHandledLikeANormalRequestAndNeverSolves() throws Exception {
+    tokenStore.clear();
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/PasswordReset/ForgotPassword/create-password-reset-link")
                 .param("email", TOM_EMAIL)
-                .header(HttpHeaders.HOST, webWolfHost + ":" + webWolfPort))
-        .andExpect(status().isOk());
-    Assertions.assertThat(ResetLinkAssignment.resetLinks).isNotEmpty();
+                .header(HttpHeaders.HOST, webWolfHost + ":" + webWolfPort)
+                .header("X-Forwarded-Host", webWolfHost + ":" + webWolfPort))
+        .andExpect(status().isOk())
+        .andExpect(notCompleted())
+        .andExpect(
+            org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
+                    "$.feedback")
+                .value(
+                    org.hamcrest.Matchers.containsString(
+                        "An e-mail has been send to " + TOM_EMAIL)));
+    // a token is issued for Tom's own account, whatever the Host header said
+    Assertions.assertThat(tokenStore.size()).isEqualTo(1);
+    // ... and the Tom login still fails: the token is useless outside Tom's account
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", TOM_EMAIL)
+                .param("password", "123456"))
+        .andExpect(status().isOk())
+        .andExpect(notCompleted());
+  }
 
-    // With a known link you should be
+  @Test
+  void resetRequestsAreRateLimited() throws Exception {
+    tokenStore.clear();
+    for (int i = 0; i < ResetTokenStore.MAX_REQUESTS_PER_WINDOW + 3; i++) {
+      mockMvc
+          .perform(
+              MockMvcRequestBuilders.post(
+                      "/PasswordReset/ForgotPassword/create-password-reset-link")
+                  .param("email", "user" + i + "@webgoat.org"))
+          .andExpect(status().isOk())
+          .andExpect(notCompleted());
+    }
+    Assertions.assertThat(tokenStore.size()).isEqualTo(ResetTokenStore.MAX_REQUESTS_PER_WINDOW);
+  }
+
+  @Test
+  void knownLinkShouldReturnPasswordResetPage() throws Exception {
+    String token = tokenStore.issue("test");
     MvcResult mvcResult =
         mockMvc
-            .perform(
-                MockMvcRequestBuilders.get(
-                    "/PasswordReset/reset/reset-password/{link}",
-                    ResetLinkAssignment.resetLinks.get(0)))
+            .perform(MockMvcRequestBuilders.get("/PasswordReset/reset/reset-password/{link}", token))
             .andExpect(status().isOk())
             .andExpect(view().name("lessons/passwordreset/templates/password_reset.html"))
             .andReturn();
 
     Assertions.assertThat(resourceLoader.getResource(mvcResult.getModelAndView().getViewName()))
         .isNotNull();
+  }
+
+  @Test
+  void interceptedTomLinkCannotBeUsedToTakeOverTomsAccount() throws Exception {
+    String tomsToken = tokenStore.issue("tom");
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/change-password")
+                .param("resetLink", tomsToken)
+                .param("password", "123456"))
+        .andExpect(status().isOk())
+        .andExpect(view().name("lessons/passwordreset/templates/password_link_not_found.html"));
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", TOM_EMAIL)
+                .param("password", "123456"))
+        .andExpect(status().isOk())
+        .andExpect(notCompleted());
+  }
+
+  @Test
+  void ownLinkCanBeUsedOnceByItsOwner() throws Exception {
+    String link = tokenStore.issue("test");
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/change-password")
+                .param("resetLink", link)
+                .param("password", "new_password"))
+        .andExpect(status().isOk())
+        .andExpect(view().name("lessons/passwordreset/templates/success.html"));
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/change-password")
+                .param("resetLink", link)
+                .param("password", "new_password"))
+        .andExpect(status().isOk())
+        .andExpect(view().name("lessons/passwordreset/templates/password_link_not_found.html"));
   }
 }

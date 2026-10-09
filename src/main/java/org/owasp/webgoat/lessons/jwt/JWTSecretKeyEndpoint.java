@@ -12,11 +12,11 @@ import io.jsonwebtoken.Jwt;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.impl.TextCodec;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
-import java.util.Random;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
 import org.owasp.webgoat.container.assignments.AttackResult;
@@ -34,8 +34,19 @@ public class JWTSecretKeyEndpoint implements AssignmentEndpoint {
   public static final String[] SECRETS = {
     "victory", "business", "available", "shipping", "washington"
   };
-  public static final String JWT_SECRET =
-      TextCodec.BASE64.encode(SECRETS[new Random().nextInt(SECRETS.length)]);
+  /**
+   * The only key the /JWT/secret verifier trusts: a random 512 bit key generated per server start,
+   * never handed out and not derived from a dictionary word, so it cannot be brute forced.
+   */
+  public static final String JWT_SECRET = JwtSecrets.randomBase64Key();
+
+  /**
+   * Key of the sample token shown on the lesson page. The sample is a throw-away demo token: its
+   * key is deliberately unrelated to {@link #JWT_SECRET}, so recovering it (it is a dictionary
+   * word) gives no ability to forge a token the verifier accepts.
+   */
+  private static final String SAMPLE_TOKEN_SECRET =
+      TextCodec.BASE64.encode(SECRETS[new SecureRandom().nextInt(SECRETS.length)]);
   private static final String WEBGOAT_USER = "WebGoat";
   private static final List<String> expectedClaims =
       List.of("iss", "iat", "exp", "aud", "sub", "username", "Email", "Role");
@@ -52,7 +63,7 @@ public class JWTSecretKeyEndpoint implements AssignmentEndpoint {
         .claim("username", "Tom")
         .claim("Email", "tom@webgoat.org")
         .claim("Role", new String[] {"Manager", "Project Administrator"})
-        .signWith(SignatureAlgorithm.HS256, JWT_SECRET)
+        .signWith(SignatureAlgorithm.HS256, SAMPLE_TOKEN_SECRET)
         .compact();
   }
 

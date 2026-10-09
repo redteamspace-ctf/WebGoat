@@ -7,7 +7,7 @@ package org.owasp.webgoat.lessons.hijacksession;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
-import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.commons.lang3.StringUtils;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
@@ -15,6 +15,8 @@ import org.owasp.webgoat.container.assignments.AssignmentHints;
 import org.owasp.webgoat.container.assignments.AttackResult;
 import org.owasp.webgoat.lessons.hijacksession.cas.Authentication;
 import org.owasp.webgoat.lessons.hijacksession.cas.HijackSessionAuthenticationProvider;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -50,6 +52,7 @@ public class HijackSessionAssignment implements AssignmentEndpoint {
       @RequestParam String username,
       @RequestParam String password,
       @CookieValue(value = COOKIE_NAME, required = false) String cookieValue,
+      HttpServletRequest request,
       HttpServletResponse response) {
 
     Authentication authentication;
@@ -57,8 +60,9 @@ public class HijackSessionAssignment implements AssignmentEndpoint {
       authentication =
           provider.authenticate(
               Authentication.builder().name(username).credentials(password).build());
-      setCookie(response, authentication.getId());
+      setCookie(request, response, authentication.getId());
     } else {
+      // only a complete id issued by the provider (including its random secret) is accepted
       authentication = provider.authenticate(Authentication.builder().id(cookieValue).build());
     }
 
@@ -69,10 +73,15 @@ public class HijackSessionAssignment implements AssignmentEndpoint {
     return failed(this).build();
   }
 
-  private void setCookie(HttpServletResponse response, String cookieValue) {
-    Cookie cookie = new Cookie(COOKIE_NAME, cookieValue);
-    cookie.setPath("/WebGoat");
-    cookie.setSecure(true);
-    response.addCookie(cookie);
+  private void setCookie(HttpServletRequest request, HttpServletResponse response, String value) {
+    String path = StringUtils.defaultIfEmpty(request.getContextPath(), "/");
+    ResponseCookie cookie =
+        ResponseCookie.from(COOKIE_NAME, value)
+            .path(path)
+            .secure(true)
+            .httpOnly(true)
+            .sameSite("Strict")
+            .build();
+    response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
   }
 }
