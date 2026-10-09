@@ -74,8 +74,6 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
       String passwordTom = usersToTomPassword.getOrDefault(username, PASSWORD_TOM_9);
       if (passwordTom.equals(PASSWORD_TOM_9)) {
         return failed(this).feedback("login_failed").build();
-      } else if (passwordTom.equals(password)) {
-        return success(this).build();
       }
     }
     return failed(this).feedback("login_failed.tom").build();
@@ -84,13 +82,12 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
   @GetMapping("/PasswordReset/reset/reset-password/{link}")
   public ModelAndView resetPassword(@PathVariable(value = "link") String link, Model model) {
     ModelAndView modelAndView = new ModelAndView();
-    if (ResetLinkAssignment.resetLinks.contains(link)) {
+    if (resetLinks.contains(link)) {
       PasswordChangeForm form = new PasswordChangeForm();
       form.setResetLink(link);
       model.addAttribute("form", form);
       modelAndView.addObject("form", form);
-      modelAndView.setViewName(
-          VIEW_FORMATTER.formatted("password_reset")); // Display html page for changing password
+      modelAndView.setViewName(VIEW_FORMATTER.formatted("password_reset"));
     } else {
       modelAndView.setViewName(VIEW_FORMATTER.formatted("password_link_not_found"));
     }
@@ -117,6 +114,7 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
     if (checkIfLinkIsFromTom(form.getResetLink(), username)) {
       usersToTomPassword.put(username, form.getPassword());
     }
+    resetLinks.remove(form.getResetLink());
     modelAndView.setViewName(VIEW_FORMATTER.formatted("success"));
     return modelAndView;
   }

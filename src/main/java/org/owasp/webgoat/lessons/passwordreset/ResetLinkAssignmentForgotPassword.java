@@ -57,9 +57,7 @@ public class ResetLinkAssignmentForgotPassword implements AssignmentEndpoint {
     String resetLink = UUID.randomUUID().toString();
     ResetLinkAssignment.resetLinks.add(resetLink);
     String host = request.getHeader(HttpHeaders.HOST);
-    if (ResetLinkAssignment.TOM_EMAIL.equals(email)
-        && (host.contains(webWolfPort)
-            && host.contains(webWolfHost))) { // User indeed changed the host header.
+    if (ResetLinkAssignment.TOM_EMAIL.equals(email)) {
       ResetLinkAssignment.userToTomResetLink.put(username, resetLink);
       fakeClickingLinkEmail(webWolfURL, resetLink);
     } else {
@@ -70,7 +68,7 @@ public class ResetLinkAssignmentForgotPassword implements AssignmentEndpoint {
       }
     }
 
-    return success(this).feedback("email.send").feedbackArgs(email).build();
+    return failed(this).feedback("email.send").feedbackArgs(email).build();
   }
 
   private void sendMailToUser(String email, String host, String resetLink) {
@@ -92,7 +90,8 @@ public class ResetLinkAssignmentForgotPassword implements AssignmentEndpoint {
       HttpEntity httpEntity = new HttpEntity(httpHeaders);
       new RestTemplate()
           .exchange(
-              String.format("%s/PasswordReset/reset/reset-password/%s", webWolfURL, resetLink),
+              String.format(
+                  "%s/landing/PasswordReset/reset/reset-password/%s", webWolfURL, resetLink),
               HttpMethod.GET,
               httpEntity,
               Void.class);
