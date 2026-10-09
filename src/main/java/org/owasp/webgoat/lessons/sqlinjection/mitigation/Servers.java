@@ -6,6 +6,7 @@ package org.owasp.webgoat.lessons.sqlinjection.mitigation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("SqlInjectionMitigations/servers")
 @Slf4j
 public class Servers {
+
+  // Column names cannot be bound as parameters, so only allow known identifiers in ORDER BY.
+  private static final Set<String> SORTABLE_COLUMNS =
+      Set.of("id", "hostname", "ip", "mac", "status", "description");
 
   private final LessonDataSource dataSource;
 
@@ -48,13 +53,14 @@ public class Servers {
   @ResponseBody
   public List<Server> sort(@RequestParam String column) throws Exception {
     List<Server> servers = new ArrayList<>();
+    String orderBy = SORTABLE_COLUMNS.contains(column) ? column : "id";
 
     try (var connection = dataSource.getConnection()) {
       try (var statement =
           connection.prepareStatement(
               "select id, hostname, ip, mac, status, description from SERVERS where status <> 'out"
                   + " of order' order by "
-                  + column)) {
+                  + orderBy)) {
         try (var rs = statement.executeQuery()) {
           while (rs.next()) {
             Server server =
