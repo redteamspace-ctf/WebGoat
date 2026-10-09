@@ -213,7 +213,8 @@ define(['jquery',
 
             /* for testing */
             showTestParam: function (param) {
-                this.$el.find('.lesson-content').html('test:' + param);
+                // .text(), never .html(): the value comes from the URL fragment
+                this.$el.find('.lesson-content').text('test:' + param);
             },
 
             resetLesson: function () {
