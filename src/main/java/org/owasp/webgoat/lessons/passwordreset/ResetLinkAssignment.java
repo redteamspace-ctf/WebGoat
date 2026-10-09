@@ -5,14 +5,9 @@
 package org.owasp.webgoat.lessons.passwordreset;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
-import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 import static org.springframework.util.StringUtils.hasText;
 
-import com.google.common.collect.Maps;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import jakarta.servlet.http.HttpServletResponse;
 import org.owasp.webgoat.container.CurrentUsername;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -45,18 +40,15 @@ import org.springframework.web.servlet.ModelAndView;
 public class ResetLinkAssignment implements AssignmentEndpoint {
 
   private static final String VIEW_FORMATTER = "lessons/passwordreset/templates/%s.html";
-  static final String PASSWORD_TOM_9 =
-      "somethingVeryRandomWhichNoOneWillEverTypeInAsPasswordForTom";
   static final String TOM_EMAIL = "tom@webgoat-cloud.org";
-  static Map<String, String> userToTomResetLink = new HashMap<>();
-  static Map<String, String> usersToTomPassword = Maps.newHashMap();
-  static List<String> resetLinks = new ArrayList<>();
 
+  // The link is the configured WebGoat base URL plus the token (see
+  // ResetLinkAssignmentForgotPassword); nothing in it comes from the request.
   static final String TEMPLATE =
       """
       Hi, you requested a password reset link, please use this <a target='_blank'
-       href='http://%s/WebGoat/PasswordReset/reset/reset-password/%s'>link</a> to reset your
-       password.
+       href='%s'>link</a> to reset your password. The link can be used once and expires in 15
+       minutes.
 
       If you did not request this password change you can ignore this message.
       If you have any comments or questions, please do not hesitate to reach us at
@@ -66,31 +58,37 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
       Team WebGoat
       """;
 
+  private final ResetTokenStore tokenStore;
+
+  public ResetLinkAssignment(ResetTokenStore tokenStore) {
+    this.tokenStore = tokenStore;
+  }
+
   @PostMapping("/PasswordReset/reset/login")
   @ResponseBody
   public AttackResult login(
       @RequestParam String password, @RequestParam String email, @CurrentUsername String username) {
-    if (TOM_EMAIL.equals(email)) {
-      String passwordTom = usersToTomPassword.getOrDefault(username, PASSWORD_TOM_9);
-      if (passwordTom.equals(PASSWORD_TOM_9)) {
-        return failed(this).feedback("login_failed").build();
-      } else if (passwordTom.equals(password)) {
-        return success(this).build();
-      }
+    // Tom's password can only be changed with a reset token issued for Tom's account, which is
+    // delivered to Tom's own mailbox and can only be redeemed by Tom. Nobody else can have changed
+    // it, so a login as Tom with an attacker-chosen password never succeeds.
+    if (TOM_EMAIL.equalsIgnoreCase(String.valueOf(email).trim())) {
+      return failed(this).feedback("login_failed").build();
     }
     return failed(this).feedback("login_failed.tom").build();
   }
 
   @GetMapping("/PasswordReset/reset/reset-password/{link}")
-  public ModelAndView resetPassword(@PathVariable(value = "link") String link, Model model) {
+  public ModelAndView resetPassword(
+      @PathVariable(value = "link") String link, Model model, HttpServletResponse response) {
+    noLeakHeaders(response);
     ModelAndView modelAndView = new ModelAndView();
-    if (ResetLinkAssignment.resetLinks.contains(link)) {
+    if (tokenStore.isValid(link)) {
+      // Only renders the form; the token is checked again and consumed on the POST below.
       PasswordChangeForm form = new PasswordChangeForm();
       form.setResetLink(link);
       model.addAttribute("form", form);
       modelAndView.addObject("form", form);
-      modelAndView.setViewName(
-          VIEW_FORMATTER.formatted("password_reset")); // Display html page for changing password
+      modelAndView.setViewName(VIEW_FORMATTER.formatted("password_reset"));
     } else {
       modelAndView.setViewName(VIEW_FORMATTER.formatted("password_link_not_found"));
     }
@@ -101,7 +99,9 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
   public ModelAndView changePassword(
       @ModelAttribute("form") PasswordChangeForm form,
       BindingResult bindingResult,
-      @CurrentUsername String username) {
+      @CurrentUsername String username,
+      HttpServletResponse response) {
+    noLeakHeaders(response);
     ModelAndView modelAndView = new ModelAndView();
     if (!hasText(form.getPassword())) {
       bindingResult.rejectValue("password", "not.empty");
@@ -110,19 +110,19 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
       modelAndView.setViewName(VIEW_FORMATTER.formatted("password_reset"));
       return modelAndView;
     }
-    if (!resetLinks.contains(form.getResetLink())) {
+    // The token (sent in the POST body) must be valid, unexpired, unused and issued for the account
+    // that is redeeming it; it is consumed atomically. A token for Tom never works from another
+    // user's session, even if it was intercepted.
+    if (!tokenStore.consume(form.getResetLink(), username)) {
       modelAndView.setViewName(VIEW_FORMATTER.formatted("password_link_not_found"));
       return modelAndView;
-    }
-    if (checkIfLinkIsFromTom(form.getResetLink(), username)) {
-      usersToTomPassword.put(username, form.getPassword());
     }
     modelAndView.setViewName(VIEW_FORMATTER.formatted("success"));
     return modelAndView;
   }
 
-  private boolean checkIfLinkIsFromTom(String resetLinkFromForm, String username) {
-    String resetLink = userToTomResetLink.getOrDefault(username, "unknown");
-    return resetLink.equals(resetLinkFromForm);
+  private static void noLeakHeaders(HttpServletResponse response) {
+    response.setHeader("Referrer-Policy", "no-referrer");
+    response.setHeader("Cache-Control", "no-store");
   }
 }

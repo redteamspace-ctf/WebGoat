@@ -4,12 +4,19 @@
  */
 package org.owasp.webgoat.lessons.sqlinjection.mitigation;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.owasp.webgoat.container.LessonDataSource;
 import org.owasp.webgoat.container.plugins.LessonTest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /**
@@ -17,6 +24,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
  * @since 5/21/17.
  */
 public class SqlInjectionLesson13Test extends LessonTest {
+
+  @Autowired private LessonDataSource dataSource;
 
   @Test
   public void knownAccountShouldDisplayData() throws Exception {
@@ -27,107 +36,71 @@ public class SqlInjectionLesson13Test extends LessonTest {
   }
 
   @Test
-  public void addressCorrectShouldOrderByHostname() throws Exception {
+  public void allowedColumnIsUsedForOrdering() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "CASE WHEN (SELECT ip FROM servers WHERE hostname='webgoat-prd') LIKE '104.%'"
-                        + " THEN hostname ELSE id END"))
+                .param("column", "hostname"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
   }
 
-  @Test
-  public void addressCorrectShouldOrderByHostnameUsingSubstr() throws Exception {
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "CASE WHEN (SELECT ip FROM servers WHERE hostname='webgoat-prd') LIKE '104.%' THEN hostname"
+            + " ELSE id END",
+        "case when (select ip from servers where hostname='webgoat-prd' and substr(ip,1,1) = '1')"
+            + " IS NOT NULL then hostname else id end",
+        "(case when (true) then hostname else id end)",
+        "unknown"
+      })
+  public void expressionsInOrderByAreIgnored(String column) throws Exception {
+    // anything that is not an allow-listed column name falls back to the default order (by id),
+    // so the ordering can no longer be used as a boolean oracle
     mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "case when (select ip from servers where hostname='webgoat-prd' and"
-                        + " substr(ip,1,1) = '1') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
-
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "case when (select ip from servers where hostname='webgoat-prd' and"
-                        + " substr(ip,2,1) = '0') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
-
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "case when (select ip from servers where hostname='webgoat-prd' and"
-                        + " substr(ip,3,1) = '4') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
-  }
-
-  @Test
-  public void addressIncorrectShouldOrderByIdUsingSubstr() throws Exception {
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "case when (select ip from servers where hostname='webgoat-prd' and"
-                        + " substr(ip,1,1) = '9') IS NOT NULL then hostname else id end"))
+        .perform(MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers").param("column", column))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].hostname", is("webgoat-dev")));
   }
 
   @Test
-  public void trueShouldSortByHostname() throws Exception {
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param("column", "(case when (true) then hostname else id end)"))
-        .andExpect(status().isOk())
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
-  }
-
-  @Test
-  public void falseShouldSortById() throws Exception {
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param("column", "(case when (true) then hostname else id end)"))
-        .andExpect(status().isOk())
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
-  }
-
-  @Test
-  public void addressIncorrectShouldOrderByHostname() throws Exception {
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "CASE WHEN (SELECT ip FROM servers WHERE hostname='webgoat-prd') LIKE '192.%'"
-                        + " THEN hostname ELSE id END"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-dev")));
-  }
-
-  @Test
-  public void postingCorrectAnswerShouldPassTheLesson() throws Exception {
+  public void wellKnownProductionIpIsRefused() throws Exception {
+    // the production IP used to be a fixed, published value; it is now random per lesson schema
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlInjectionMitigations/attack12a")
                 .param("ip", "104.130.219.202"))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  @Test
+  public void productionIpIsRandomAndOnlyItPassesTheLesson() throws Exception {
+    String ip;
+    try (var connection = dataSource.getConnection();
+        var statement = connection.prepareStatement("select ip from servers where hostname = ?")) {
+      statement.setString(1, "webgoat-prd");
+      try (var rs = statement.executeQuery()) {
+        assertThat(rs.next()).isTrue();
+        ip = rs.getString(1);
+      }
+    }
+    assertThat(ip).isNotEqualTo("104.130.219.202").matches("10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}");
+
+    mockMvc
+        .perform(MockMvcRequestBuilders.post("/SqlInjectionMitigations/attack12a").param("ip", ip))
+        .andExpect(status().isOk())
         .andExpect(jsonPath("$.lessonCompleted", is(true)));
+  }
+
+  @Test
+  public void productionServerIsNotListed() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers").param("column", "ip"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[*].hostname", not(hasItem("webgoat-prd"))));
   }
 
   @Test
